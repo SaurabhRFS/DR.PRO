@@ -11,6 +11,7 @@ import AppointmentsPage from '@/pages/AppointmentsPage';
 import ProfileSettingsPage from '@/pages/ProfileSettingsPage';
 import FinanceCalendar from "@/components/finance/FinanceCalendar";
 import { motion, AnimatePresence } from 'framer-motion';
+import CalendarPage from '@/pages/CalendarPage';
 
 const AnimatedRoute = ({ element }) => (
   <motion.div
@@ -37,7 +38,7 @@ function App() {
             <Route path="/patients/:patientId" element={<AnimatedRoute element={<PatientDetailPage />} />} />
             <Route path="/patients/:patientId/edit" element={<AnimatedRoute element={<PatientFormPage />} />} />
             <Route path="/finance" element={<AnimatedRoute element={<FinancePage />} />} />
-            <Route path="/calendar" element={<FinanceCalendar />} />
+            <Route path="/calendar" element={<AnimatedRoute element={<CalendarPage />} />} />
             <Route path="/profile-settings/:tab?" element={<AnimatedRoute element={<ProfileSettingsPage />} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

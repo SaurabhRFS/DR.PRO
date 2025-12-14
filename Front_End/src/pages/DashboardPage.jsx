@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import useTheme from "@/hooks/useTheme";
-import useLocalStorage from "@/hooks/useLocalStorage";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,33 +33,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
+import axios from 'axios'; // Import Axios
 
-// --- API Utility (Corrected) ---
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-
-const api = {
-  // FIX: Used template literal (backticks ``) for string interpolation
-  getAppointments: async () => {
-    const response = await fetch(`${API_BASE_URL}/appointments`);
-    if (!response.ok) throw new Error('Failed to fetch appointments');
-    return response.json();
-  },
-  // FIX: Used template literal (backticks ``) for string interpolation
-  getPatients: async () => {
-    const response = await fetch(`${API_BASE_URL}/patients`);
-    if (!response.ok) throw new Error('Failed to fetch patients');
-    return response.json();
-  },
-};
-// --- End API Utility ---
 
 const DashboardPage = () => {
   const [patients, setPatients] = useState([]);
   const [appointments, setAppointments] = useState([]);
-  const [doctorProfile] = useLocalStorage("doctorProfile", {
-    name: "Dr. Saurabh",
+  // FIX 1: Use normal state instead of useLocalStorage
+  const [doctorProfile, setDoctorProfile] = useState({
+    name: "Doctor",
     avatarUrl: "",
   });
+  
   const [greeting, setGreeting] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
@@ -70,23 +55,28 @@ const DashboardPage = () => {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [appointmentsData, patientsData] = await Promise.all([
-        api.getAppointments(),
-        api.getPatients(),
+      // FIX 2: Fetch Profile, Appointments, and Patients all at once
+      const [appointmentsRes, patientsRes, profileRes] = await Promise.all([
+        axios.get(`${API_BASE_URL}/appointments`),
+        axios.get(`${API_BASE_URL}/patients`),
+        axios.get(`${API_BASE_URL}/profile`)
       ]);
-      setAppointments(appointmentsData);
-      setPatients(patientsData);
+
+      setAppointments(appointmentsRes.data || []);
+      setPatients(patientsRes.data || []);
+      
+      // Update profile if data exists
+      if (profileRes.data) {
+        setDoctorProfile(profileRes.data);
+      }
+
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load dashboard data. Please try again.",
-        variant: "destructive",
-      });
+      // Don't show error toast on dashboard to keep it clean, just log it
     } finally {
       setIsLoading(false);
     }
-  }, [setAppointments, setPatients, toast]);
+  }, []);
 
   useEffect(() => {
     fetchData();
@@ -132,7 +122,6 @@ const DashboardPage = () => {
     },
     {
       title: "Today's Income",
-      // FIX: Used template literal (backticks ``) to format the currency
       value: isLoading ? "..." : `₹${todaysIncome.toFixed(2)}`,
       icon: DollarSign,
       color: "text-yellow-500",
@@ -141,9 +130,6 @@ const DashboardPage = () => {
     },
   ];
 
-  // FIX: Corrected the quickLinks structure to be Tailwind-friendly.
-  // Dynamic class concatenation is unreliable with Tailwind's build process.
-  // It's better to define the full classes directly.
   const quickLinks = [
     {
       name: "Add New Patient",
@@ -161,7 +147,7 @@ const DashboardPage = () => {
     },
     {
       name: "View Calendar",
-      href: "/finance?scrollTo=calendar",
+      href: "/calendar", // Fixed link to calendar
       icon: CalendarDays,
       color: "text-blue-600",
       hoverClasses: "hover:border-blue-600 hover:bg-blue-600/10",
@@ -176,7 +162,7 @@ const DashboardPage = () => {
   ];
 
   const getInitials = (name) => {
-    if (!name) return "DS";
+    if (!name) return "DR";
     const names = name.split(" ");
     if (names.length > 1) {
       return (
@@ -205,12 +191,9 @@ const DashboardPage = () => {
               <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                 <Avatar className="h-12 w-12 cursor-pointer border-2 border-primary/50 shadow-md">
                   <AvatarImage
-                    // FIX: Used template literal for the fallback URL
-                    src={
-                      doctorProfile.avatarUrl ||
-                      `https://avatar.vercel.sh/${doctorProfile.name}.png?size=48`
-                    }
+                    src={doctorProfile.avatarUrl}
                     alt={doctorProfile.name}
+                    className="object-cover"
                   />
                   <AvatarFallback className="bg-primary/20 text-primary font-semibold">
                     {getInitials(doctorProfile.name)}
@@ -244,7 +227,7 @@ const DashboardPage = () => {
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
               {greeting}, {" "}
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent">
-                {doctorProfile.name}
+                {doctorProfile.name || "Doctor"}
               </span>{" "}
               👋
             </h1>
@@ -255,7 +238,6 @@ const DashboardPage = () => {
                 day: "numeric",
               })}
             </p>
-            {/* The theme toggle button was moved outside the main greeting div for better alignment */}
           </div>
         </div>
         <Button
@@ -285,7 +267,6 @@ const DashboardPage = () => {
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     {stat.title}
                   </CardTitle>
-                  {/* FIX: Used backticks for className */}
                   <div className={`p-2 rounded-full ${stat.bgColor}`}>
                     <stat.icon className={`h-5 w-5 ${stat.color}`} />
                   </div>
@@ -312,10 +293,8 @@ const DashboardPage = () => {
             <Link to={link.href} key={link.name}>
               <Button
                 variant="outline"
-                // FIX: Used the predefined hover classes from the link object
                 className={`w-full justify-start py-5 text-left border-2 dark:border-slate-700 transition-colors duration-200 ${link.hoverClasses}`}
               >
-                {/* FIX: Used backticks for className */}
                 <link.icon className={`mr-3 h-5 w-5 ${link.color}`} />
                 <div>
                   <p className="font-semibold text-foreground">{link.name}</p>
@@ -363,7 +342,6 @@ const DashboardPage = () => {
                         {app.notes || "General Visit"}
                       </p>
                     </div>
-                    {/* FIX: Used template literal for the `to` prop */}
                     <Link to={`/appointments?appointment_id=${app.id}`}>
                       <Button
                         variant="ghost"

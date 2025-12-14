@@ -1,8 +1,10 @@
 package com.drpro.backend.controller;
 
 import com.drpro.backend.model.Appointment;
+import com.drpro.backend.model.DentalRecord;
 import com.drpro.backend.model.Patient;
 import com.drpro.backend.repository.AppointmentRepository;
+import com.drpro.backend.repository.DentalRecordRepository;
 import com.drpro.backend.repository.PatientRepository;
 import com.drpro.backend.service.CloudinaryService;
 import com.drpro.backend.service.GoogleCalendarService;
@@ -16,7 +18,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*") // Allows React to connect
 public class ClinicController {
 
     @Autowired
@@ -26,9 +27,18 @@ public class ClinicController {
     
     @Autowired
     private CloudinaryService cloudinaryService;
+
+    @Autowired
+    private DentalRecordRepository dentalRecordRepo;
     
     @Autowired
     private GoogleCalendarService calendarService;
+
+    @Autowired
+    private com.drpro.backend.repository.DoctorProfileRepository profileRepo;
+
+    @Autowired
+    private com.drpro.backend.repository.ClinicSettingsRepository clinicRepo;
 
     // ================= PATIENT ENDPOINTS =================
 
@@ -42,11 +52,10 @@ public class ClinicController {
         return patientRepo.findById(id).orElseThrow(() -> new RuntimeException("Patient not found"));
     }
 
-    // --- THE FIXED SAVE METHOD ---
     @PostMapping(value = "/patients", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Patient addPatient(
             @RequestParam("name") String name,
-            @RequestParam("dob") String dob, // Comes as String "1990-01-01"
+            @RequestParam("dob") String dob,
             @RequestParam("phone") String phone,
             @RequestParam(value = "alternatePhone", required = false) String alternatePhone,
             @RequestParam(value = "email", required = false) String email,
@@ -57,32 +66,44 @@ public class ClinicController {
             @RequestParam(value = "currentMedications", required = false) String currentMedications,
             @RequestParam(value = "avatar", required = false) MultipartFile avatar
     ) {
-        // Debug Log
-        System.out.println("Saving Patient: " + name); 
+        try {
+            Patient p = new Patient();
+            p.setName(name);
+            p.setPhone(phone);
+            p.setAlternatePhone(alternatePhone);
+            p.setEmail(email);
+            p.setAddress(address);
+            p.setGender(gender);
+            p.setMedicalHistory(medicalHistory);
+            p.setAllergies(allergies);
+            p.setCurrentMedications(currentMedications);
 
-        Patient p = new Patient();
-        p.setName(name);
-        p.setPhone(phone);
-        p.setAlternatePhone(alternatePhone);
-        p.setEmail(email);
-        p.setAddress(address);
-        p.setGender(gender);
-        p.setMedicalHistory(medicalHistory);
-        p.setAllergies(allergies);
-        p.setCurrentMedications(currentMedications);
+            // Safe Date Parsing
+            if (dob != null && !dob.isEmpty()) {
+                try {
+                    p.setDob(LocalDate.parse(dob));
+                } catch (Exception e) {
+                    System.err.println("Date Parse Error for value: " + dob);
+                    // Use today as fallback or leave null, don't crash
+                }
+            }
 
-        // Fix: Handle Date Parsing safely
-        if (dob != null && !dob.isEmpty()) {
-            p.setDob(LocalDate.parse(dob));
+            // Safe Image Upload
+            if (avatar != null && !avatar.isEmpty()) {
+                try {
+                    String imageUrl = cloudinaryService.uploadFile(avatar);
+                    p.setAvatarUrl(imageUrl);
+                } catch (Exception e) {
+                    System.err.println("Image Upload Failed: " + e.getMessage());
+                }
+            }
+
+            return patientRepo.save(p);
+            
+        } catch (Exception e) {
+            e.printStackTrace(); // Print the REAL error to the backend console
+            throw new RuntimeException("Error saving patient: " + e.getMessage());
         }
-
-        // Fix: Handle Image Upload
-        if (avatar != null && !avatar.isEmpty()) {
-            String imageUrl = cloudinaryService.uploadFile(avatar);
-            p.setAvatarUrl(imageUrl);
-        }
-
-        return patientRepo.save(p);
     }
 
     @PutMapping(value = "/patients/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -158,4 +179,103 @@ public class ClinicController {
         app.setStatus(details.getStatus());
         return appointmentRepo.save(app);
     }
+
+    // Matches Frontend: api.getDentalRecords -> GET /api/dentalrecords?patientId=...
+    @GetMapping("/dentalrecords")
+    public List<DentalRecord> getDentalRecords(@RequestParam(required = false) Long patientId) {
+        if (patientId != null) {
+            return dentalRecordRepo.findByPatientId(patientId);
+        }
+        return dentalRecordRepo.findAll();
+    }
+
+    // Matches Frontend: api.addDentalRecord -> POST /api/dentalrecords
+    @PostMapping("/dentalrecords")
+    public DentalRecord addDentalRecord(@RequestBody DentalRecord record) {
+        return dentalRecordRepo.save(record);
+    }
+
+    @PutMapping("/dentalrecords/{id}")
+    public DentalRecord updateDentalRecord(@PathVariable Long id, @RequestBody DentalRecord details) {
+        DentalRecord record = dentalRecordRepo.findById(id).orElseThrow();
+        record.setTreatmentName(details.getTreatmentName());
+        record.setNotes(details.getNotes());
+        record.setCost(details.getCost());
+        record.setDate(details.getDate());
+        return dentalRecordRepo.save(record);
+    }
+
+    @DeleteMapping("/dentalrecords/{id}")
+    public void deleteDentalRecord(@PathVariable Long id) {
+        dentalRecordRepo.deleteById(id);
+    }
+
+    // ================= PROFILE SETTINGS =================
+
+    @GetMapping("/profile")
+    public com.drpro.backend.model.DoctorProfile getProfile() {
+        // Return existing profile or create a default empty one if it's the first run
+        return profileRepo.findById(1L).orElse(new com.drpro.backend.model.DoctorProfile());
+    }
+
+    @PutMapping(value = "/profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.drpro.backend.model.DoctorProfile updateProfile(
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "email", required = false) String email,
+            @RequestParam(value = "phone", required = false) String phone,
+            @RequestParam(value = "clinicName", required = false) String clinicName,
+            @RequestParam(value = "avatar", required = false) MultipartFile avatar
+    ) {
+        com.drpro.backend.model.DoctorProfile profile = profileRepo.findById(1L)
+                .orElse(new com.drpro.backend.model.DoctorProfile());
+        
+        // Always ensure ID is 1
+        profile.setId(1L);
+
+        if (name != null) profile.setName(name);
+        if (email != null) profile.setEmail(email);
+        if (phone != null) profile.setPhone(phone);
+        if (clinicName != null) profile.setClinicName(clinicName);
+
+        if (avatar != null && !avatar.isEmpty()) {
+            String url = cloudinaryService.uploadFile(avatar);
+            profile.setAvatarUrl(url);
+        }
+
+        return profileRepo.save(profile);
+    }
+
+    // ================= CLINIC SETTINGS =================
+
+    @GetMapping("/clinic-settings")
+    public com.drpro.backend.model.ClinicSettings getClinicSettings() {
+        return clinicRepo.findById(1L).orElse(new com.drpro.backend.model.ClinicSettings());
+    }
+
+    @PutMapping(value = "/clinic-settings", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.drpro.backend.model.ClinicSettings updateClinicSettings(
+            @RequestParam(value = "name", required = false) String name,
+            @RequestParam(value = "openingHours", required = false) String openingHours,
+            @RequestParam(value = "contactInfo", required = false) String contactInfo,
+            @RequestParam(value = "logo", required = false) MultipartFile logo
+    ) {
+        com.drpro.backend.model.ClinicSettings settings = clinicRepo.findById(1L)
+                .orElse(new com.drpro.backend.model.ClinicSettings());
+        
+        settings.setId(1L);
+
+        if (name != null) settings.setName(name);
+        if (openingHours != null) settings.setOpeningHours(openingHours);
+        if (contactInfo != null) settings.setContactInfo(contactInfo);
+
+        if (logo != null && !logo.isEmpty()) {
+            String url = cloudinaryService.uploadFile(logo);
+            settings.setLogoUrl(url);
+        }
+
+        return clinicRepo.save(settings);
+    }
+
+    
+
 }

@@ -32,28 +32,30 @@ const PatientsListPage = () => {
   const [sortOption, setSortOption] = useState('name-asc');
 
   // --- REFACTORED: Fetch data from API on component mount ---
-  useEffect(() => {
+ useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Fetch both patients and appointments at the same time
+        // This connects to the Backend APIs we created
         const [patientsResponse, appointmentsResponse] = await Promise.all([
           axios.get(`${API_BASE_URL}/patients`),
           axios.get(`${API_BASE_URL}/appointments`)
         ]);
+        
+        // If the array is empty, it means DB is empty, NOT that it failed.
         setPatients(patientsResponse.data || []);
         setAppointments(appointmentsResponse.data || []);
       } catch (err) {
         console.error("Failed to fetch data:", err);
-        setError("Could not load data. Please check the connection and try again.");
+        setError("Could not load data. Ensure Backend is running on port 8080.");
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
 
   // --- The following logic remains largely the same, but now uses state variables ---
 

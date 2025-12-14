@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarDays, Clock, Briefcase as BriefcaseMedical, DollarSign, Edit, Trash2, MoreHorizontal, AlertOctagon, ChevronUp, ChevronsUp } from 'lucide-react';
+import { CalendarDays, Clock, Briefcase as BriefcaseMedical, DollarSign, Edit, Trash2, MoreHorizontal, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import {
@@ -10,43 +9,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel
 } from '@/components/ui/dropdown-menu';
 import AppointmentStatusBadge from '@/components/appointments/AppointmentStatusBadge';
 
-const PriorityIndicator = ({ priority }) => {
-  if (!priority) return null;
-  let color, Icon;
-  switch (priority.toLowerCase()) {
-    case 'high':
-      color = 'text-red-500';
-      Icon = ChevronsUp;
-      break;
-    case 'medium':
-      color = 'text-yellow-500';
-      Icon = ChevronUp;
-      break;
-    case 'low':
-      color = 'text-green-500';
-      Icon = AlertOctagon; 
-      break;
-    default:
-      return null;
-  }
-  return (
-    <div className={`flex items-center text-xs font-medium ${color}`}>
-      <Icon className="h-3.5 w-3.5 mr-1" />
-      {priority}
-    </div>
-  );
-};
-
-const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, index }) => {
+const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusChange, index }) => {
   const cardBorderColor = () => {
     switch (appointment.status) {
-      case 'Done': return 'hsl(var(--accent))';
+      case 'Done': return 'hsl(var(--accent))'; // Purple/Green
       case 'Cancelled':
-      case 'Missed': return 'hsl(var(--destructive))';
-      default: return 'hsl(var(--primary))';
+      case 'Missed': return 'hsl(var(--destructive))'; // Red
+      default: return 'hsl(var(--primary))'; // Blue
     }
   };
 
@@ -63,7 +37,7 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, index }) 
               <Link to={`/patients/${appointment.patientId}`}>{patientName}</Link>
             </CardTitle>
             <CardDescription className="text-sm">
-              <BriefcaseMedical className="inline h-4 w-4 mr-1.5 text-muted-foreground" />{appointment.service}
+              <BriefcaseMedical className="inline h-4 w-4 mr-1.5 text-muted-foreground" />{appointment.notes || "General Checkup"}
             </CardDescription>
           </div>
           <DropdownMenu>
@@ -72,10 +46,26 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, index }) 
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => onEdit(appointment)}>
-                <Edit className="mr-2 h-4 w-4" /> Edit
+                <Edit className="mr-2 h-4 w-4" /> Edit Details
               </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+              
+              <DropdownMenuItem onClick={() => onStatusChange(appointment, 'Done')}>
+                <CheckCircle className="mr-2 h-4 w-4 text-green-600" /> Mark as Done
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStatusChange(appointment, 'Cancelled')}>
+                <XCircle className="mr-2 h-4 w-4 text-red-600" /> Cancel
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStatusChange(appointment, 'Missed')}>
+                <AlertCircle className="mr-2 h-4 w-4 text-orange-600" /> Mark as Missed
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onDelete(appointment)} className="text-red-600 focus:text-red-600">
                 <Trash2 className="mr-2 h-4 w-4" /> Delete
               </DropdownMenuItem>
@@ -89,7 +79,7 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, index }) 
           </div>
           <div className="flex items-center">
             <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-            {appointment.time}
+            {appointment.time || "--:--"}
           </div>
           <div className="flex items-center col-span-2 sm:col-span-1">
             <AppointmentStatusBadge status={appointment.status} />
@@ -97,20 +87,10 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, index }) 
           {appointment.cost && (
             <div className="flex items-center text-green-600 font-medium">
               <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
-              ${parseFloat(appointment.cost).toFixed(2)}
+              ₹{parseFloat(appointment.cost).toFixed(2)}
             </div>
           )}
-          {appointment.priority && (
-             <div className="flex items-center">
-                <PriorityIndicator priority={appointment.priority} />
-             </div>
-          )}
         </CardContent>
-        {appointment.notes && (
-          <CardFooter className="p-4 pt-0 border-t mt-2">
-            <p className="text-xs text-muted-foreground"><strong>Notes:</strong> {appointment.notes}</p>
-          </CardFooter>
-        )}
       </Card>
     </motion.div>
   );

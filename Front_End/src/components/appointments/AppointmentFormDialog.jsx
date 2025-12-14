@@ -1,18 +1,22 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import useLocalStorage from '@/hooks/useLocalStorage';
 import { useToast } from '@/components/ui/use-toast';
+import axios from 'axios';
+
+// Ensure this matches your backend URL
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) => {
-  const [patients] = useLocalStorage('patients', []);
   const { toast } = useToast();
   const today = new Date().toISOString().split('T')[0];
+  
+  // 1. REPLACED useLocalStorage with real state
+  const [patients, setPatients] = useState([]);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
 
@@ -27,6 +31,22 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
 
   const [formData, setFormData] = useState(initialFormData);
 
+  // 2. NEW: Fetch real patients from Database when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      const fetchPatients = async () => {
+        try {
+          const response = await axios.get(`${API_BASE_URL}/patients`);
+          setPatients(response.data || []);
+        } catch (error) {
+          console.error("Failed to load patients for search:", error);
+          toast({ title: "Error", description: "Could not load patient list.", variant: "destructive" });
+        }
+      };
+      fetchPatients();
+    }
+  }, [isOpen, toast]);
+
   useEffect(() => {
     if (appointment) {
       setFormData({
@@ -37,7 +57,10 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
         cost: appointment.cost || '',
         status: appointment.status || 'Scheduled',
       });
+      // Set the selected patient ID directly
       setSelectedPatientId(appointment.patientId || '');
+      
+      // We will fetch the patient name in the next render cycle when 'patients' is populated
     } else {
       setFormData(initialFormData);
       setSelectedPatientId('');
@@ -45,6 +68,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     setSearchTerm(''); 
   }, [appointment, isOpen, today]);
 
+  // Sync selected ID with form data
   useEffect(() => {
     setFormData(prev => ({ ...prev, patientId: selectedPatientId }));
   }, [selectedPatientId]);
@@ -56,7 +80,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
 
   const handleSelectPatient = (patientId) => {
     setSelectedPatientId(patientId);
-    setSearchTerm(patients.find(p => p.id === patientId)?.name || ''); // Show name in search bar
+    setSearchTerm(patients.find(p => p.id === patientId)?.name || '');
   };
 
   const handleSubmit = (e) => {
@@ -65,48 +89,57 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
       toast({ title: "Missing Fields", description: "Patient and Date are required.", variant: "destructive" });
       return;
     }
-    onSave({ ...formData, id: appointment ? appointment.id : Date.now().toString() });
-    onOpenChange(false); // Close dialog on save
+    onSave({ ...formData, id: appointment ? appointment.id : undefined }); // Let backend handle ID generation
+    onOpenChange(false);
   };
 
+  // Filter logic remains the same, but now runs on real data
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.phone.includes(searchTerm)
   );
   
+  // Find name for display
   const currentPatientName = patients.find(p => p.id === selectedPatientId)?.name;
-
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[525px] glassmorphic dark:bg-slate-800">
         <DialogHeader>
-          <DialogTitle className="text-2xl text-primary dark:text-sky-400">{appointment ? 'Edit Appointment' : 'Schedule New Appointment'}</DialogTitle>
+          <DialogTitle className="text-2xl text-primary dark:text-sky-400">
+            {appointment ? 'Edit Appointment' : 'Schedule New Appointment'}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-4">
           <div>
             <Label htmlFor="patientSearch" className="dark:text-slate-300">
-              {selectedPatientId && currentPatientName ? `Selected Patient: ${currentPatientName}` : 'Search Patient (Name/Phone)'}
+              {selectedPatientId && currentPatientName 
+                ? `Selected Patient: ${currentPatientName}` 
+                : 'Search Patient (Name/Phone)'}
             </Label>
+            
+            {/* Search Input - Only show if no patient is locked in */}
             {!selectedPatientId && (
               <Input 
                 id="patientSearch" 
-                placeholder="Type to search..." 
+                placeholder="Type name or phone..." 
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="mb-2 dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600"
               />
             )}
+
+            {/* Dropdown Results */}
             {!selectedPatientId && searchTerm && (
-              <div className="max-h-32 overflow-y-auto border rounded-md dark:border-slate-700">
+              <div className="max-h-32 overflow-y-auto border rounded-md dark:border-slate-700 bg-white dark:bg-slate-800 z-10 relative">
                 {filteredPatients.length > 0 ? (
                   filteredPatients.map(p => (
                     <div 
                       key={p.id} 
                       onClick={() => handleSelectPatient(p.id)}
-                      className="p-2 hover:bg-accent dark:hover:bg-slate-700 cursor-pointer"
+                      className="p-2 hover:bg-accent dark:hover:bg-slate-700 cursor-pointer border-b last:border-0 dark:border-slate-700"
                     >
-                      {p.name} ({p.phone})
+                      <span className="font-medium">{p.name}</span> <span className="text-xs text-muted-foreground">({p.phone})</span>
                     </div>
                   ))
                 ) : (
@@ -114,8 +147,15 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                 )}
               </div>
             )}
+            
+             {/* Change Patient Button */}
              {selectedPatientId && (
-                <Button variant="link" size="sm" onClick={() => { setSelectedPatientId(''); setSearchTerm(''); }} className="text-xs">Change patient</Button>
+                <div className="flex justify-between items-center mt-1">
+                   <span className="text-sm text-green-600 font-medium">Patient Linked ✓</span>
+                   <Button type="button" variant="link" size="sm" onClick={() => { setSelectedPatientId(''); setSearchTerm(''); }} className="text-xs text-red-500 h-auto p-0">
+                     Change patient
+                   </Button>
+                </div>
             )}
           </div>
 

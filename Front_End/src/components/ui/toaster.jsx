@@ -14,7 +14,8 @@ export function Toaster() {
 
 	return (
 		<ToastProvider>
-			{toasts.map(({ id, title, description, action, ...props }) => {
+            {/* FIX: Added 'dismiss' to the destructured properties below */}
+			{toasts.map(({ id, title, description, action, dismiss, ...props }) => {
 				return (
 					<Toast key={id} {...props}>
 						<div className="grid gap-1">

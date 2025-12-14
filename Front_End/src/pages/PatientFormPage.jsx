@@ -1,117 +1,99 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { UserPlus, Edit3, Save, X, ArrowLeft, HeartPulse, Pill, ShieldAlert, Camera, Upload } from 'lucide-react';
-import axios from 'axios'; // Make sure you have 'axios' installed
-
-// UI Components (ensure these paths are correct for your project structure)
+import { Save, X, Upload, User, Calendar, Phone, Mail, MapPin, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/components/ui/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useToast } from '@/components/ui/use-toast';
+import axios from 'axios';
 
-// API Base URL from your .env file
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const PatientFormPage = () => {
+  // FIX 1: Matched variable name to App.jsx route ("/patients/:patientId/edit")
+  const { patientId } = useParams(); 
   const navigate = useNavigate();
-  const { patientId } = useParams();
   const { toast } = useToast();
+  
+  // FIX 2: Check for patientId instead of id
+  const isEditMode = !!patientId;
 
-  const isEditing = Boolean(patientId);
-
-  const [formData, setFormData] = React.useState({
+  const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(isEditMode);
+  
+  // Form State
+  const [formData, setFormData] = useState({
     name: '',
     dob: '',
     phone: '',
     alternatePhone: '',
     email: '',
+    gender: 'Male',
     address: '',
-    gender: '',
-    avatarUrl: '', // For displaying the image preview
-    avatarFile: null, // For holding the actual file to upload
     medicalHistory: '',
     allergies: '',
     currentMedications: '',
+    avatarUrl: '' // Added for preview
   });
+  
+  const [avatarFile, setAvatarFile] = useState(null);
 
-  const [age, setAge] = React.useState('');
-  const [isLoading, setIsLoading] = React.useState(false);
-
-  // Effect to fetch patient data from the API when in "edit" mode
-  React.useEffect(() => {
-    if (isEditing) {
+  // Fetch data if in Edit Mode
+  useEffect(() => {
+    if (isEditMode) {
       const fetchPatient = async () => {
-        setIsLoading(true);
         try {
+          // FIX 3: Use patientId in API call
           const response = await axios.get(`${API_BASE_URL}/patients/${patientId}`);
-          const patientData = response.data;
-          
+          const p = response.data;
           setFormData({
-            ...patientData,
-            // Format date for the HTML date input and reset file input
-            dob: patientData.dob ? new Date(patientData.dob).toISOString().split('T')[0] : '',
-            avatarFile: null, 
+            name: p.name || '',
+            dob: p.dob || '',
+            phone: p.phone || '',
+            alternatePhone: p.alternatePhone || '',
+            email: p.email || '',
+            gender: p.gender || 'Male',
+            address: p.address || '',
+            medicalHistory: p.medicalHistory || '',
+            allergies: p.allergies || '',
+            currentMedications: p.currentMedications || '',
+            avatarUrl: p.avatarUrl || ''
           });
-          
-          if (patientData.dob) {
-            calculateAge(patientData.dob);
-          }
-
         } catch (error) {
-          console.error("Failed to fetch patient:", error);
-          toast({
-            title: "Error",
-            description: "Patient not found or could not be loaded from the server.",
-            variant: "destructive",
-          });
-          navigate('/patients');
+          console.error("Failed to fetch patient", error);
+          toast({ title: "Error", description: "Could not load patient details.", variant: "destructive" });
         } finally {
-          setIsLoading(false);
+          setIsFetching(false);
         }
       };
       fetchPatient();
+    } else {
+        setIsFetching(false);
     }
-  }, [isEditing, patientId, navigate, toast]);
+  }, [patientId, isEditMode, toast]); // FIX 4: Updated dependencies
 
-  const calculateAge = (dobString) => {
-    if (!dobString) {
-      setAge('');
-      return;
-    }
-    const birthDate = new Date(dobString);
-    const today = new Date();
-    let calculatedAge = today.getFullYear() - birthDate.getFullYear();
-    const m = today.getMonth() - birthDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-      calculatedAge--;
-    }
-    setAge(calculatedAge >= 0 ? `${calculatedAge} years` : '');
-  };
-
-  const handleChange = (e) => {
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    if (name === 'dob') {
-      calculateAge(value);
-    }
   };
 
-  const handleSelectChange = (name, value) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleSelectChange = (value) => {
+    setFormData(prev => ({ ...prev, gender: value }));
   };
 
-  const handleAvatarFileChange = (e) => {
+  const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setAvatarFile(file);
+      // Create local preview
       const reader = new FileReader();
       reader.onloadend = () => {
-        // Set avatarUrl for instant preview and avatarFile for submission
-        setFormData(prev => ({ ...prev, avatarUrl: reader.result, avatarFile: file }));
+        setFormData(prev => ({ ...prev, avatarUrl: reader.result }));
       };
       reader.readAsDataURL(file);
     }
@@ -119,194 +101,197 @@ const PatientFormPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name || !formData.dob || !formData.phone) {
-        toast({ title: "Missing Fields", description: "Full Name, Date of Birth, and Phone Number are required.", variant: "destructive" });
-        return;
-    }
-    
     setIsLoading(true);
 
-    // Use FormData to correctly handle file uploads
-    const submissionData = new FormData();
-    
-    // Append all form fields to the FormData object
-    Object.keys(formData).forEach(key => {
-        if (key !== 'avatarUrl' && key !== 'avatarFile' && formData[key] !== null) {
-            submissionData.append(key, formData[key]);
-        }
-    });
-
-    // Append the file if it exists
-    if (formData.avatarFile) {
-        submissionData.append('avatar', formData.avatarFile);
-    }
-
     try {
-      let response;
-      if (isEditing) {
-        // Use PUT for updating. Your backend must support multipart/form-data on PUT routes.
-        // A common alternative if it doesn't is to use POST with a method override.
-        response = await axios.put(`${API_BASE_URL}/patients/${patientId}`, submissionData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        toast({ title: "Patient Updated", description: `${response.data.name}'s details have been successfully updated.` });
-      } else {
-        // Use POST for creating a new patient
-        response = await axios.post(`${API_BASE_URL}/patients`, submissionData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        toast({ title: "Patient Added", description: `${response.data.name} has been added to the system.` });
-      }
+      const dataToSend = new FormData();
+      Object.keys(formData).forEach(key => {
+        // Only append if it's not the avatarUrl string (we send the file instead)
+        if (key !== 'avatarUrl') {
+            dataToSend.append(key, formData[key]);
+        }
+      });
       
-      // On success, navigate to the detail page of the created/updated patient
-      navigate(`/patients/${response.data.id}`);
+      if (avatarFile) {
+        dataToSend.append('avatar', avatarFile);
+      }
+
+      // FIX 5: Use patientId for PUT request
+      if (isEditMode) {
+        await axios.put(`${API_BASE_URL}/patients/${patientId}`, dataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast({ title: "Success", description: "Patient updated successfully!" });
+      } else {
+        await axios.post(`${API_BASE_URL}/patients`, dataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        toast({ title: "Success", description: "New patient added successfully!" });
+      }
+
+      navigate('/patients');
 
     } catch (error) {
-      console.error("Failed to save patient:", error);
-      const errorMessage = error.response?.data?.message || "An unexpected error occurred on the server.";
-      toast({
-        title: "Submission Error",
-        description: errorMessage,
-        variant: "destructive",
+      console.error("Save error:", error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to save patient. Please check the backend connection.", 
+        variant: "destructive" 
       });
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const getInitials = (name) => {
-    if (!name) return '?';
+    if (!name) return 'P';
     const names = name.split(' ');
     if (names.length > 1) {
       return `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase();
     }
-    return names[0]?.[0]?.toUpperCase() || '?';
+    return names[0]?.[0]?.toUpperCase() || 'P';
   };
+
+  if (isFetching) {
+    return <div className="flex justify-center py-20"><Loader2 className="animate-spin" /></div>;
+  }
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="max-w-3xl mx-auto p-4"
+      className="max-w-4xl mx-auto space-y-6 pb-8"
     >
-      <div className="flex items-center justify-start mb-6">
-        <Button variant="outline" onClick={() => navigate(isEditing ? `/patients/${patientId}` : '/patients')} disabled={isLoading}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold tracking-tight">
+          {isEditMode ? 'Edit Patient' : 'Register New Patient'}
+        </h1>
+        <Button variant="ghost" onClick={() => navigate('/patients')}>
+          <X className="mr-2 h-4 w-4" /> Cancel
         </Button>
       </div>
 
-      <Card className="shadow-xl border-t-4 border-primary dark:bg-slate-800/70 dark:border-primary">
-        <CardHeader className="bg-gradient-to-br from-primary/10 to-purple-500/5 dark:from-primary/20 dark:to-purple-500/10">
-          <div className="flex items-center space-x-3">
-            {isEditing ? <Edit3 className="h-8 w-8 text-primary" /> : <UserPlus className="h-8 w-8 text-primary" />}
-            <div>
-              <CardTitle className="text-2xl sm:text-3xl font-bold text-slate-800 dark:text-slate-100">
-                {isEditing ? 'Edit Patient Details' : 'Register New Patient'}
-              </CardTitle>
-              <CardDescription className="text-slate-600 dark:text-slate-300">
-                {isEditing ? `Updating information for ${formData.name || '...'}` : 'Fill the details below to add a new patient.'}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-8">
-            
-            <section>
-              <h3 className="text-lg font-semibold mb-4 text-primary border-b pb-2 dark:text-sky-400 dark:border-slate-600">Personal Information</h3>
-              <div className="flex flex-col items-center mb-6 space-y-3">
-                <Avatar className="h-24 w-24 border-2 border-primary/30 dark:border-sky-500/50">
-                  <AvatarImage src={formData.avatarUrl} alt={formData.name} />
-                  <AvatarFallback className="text-3xl bg-muted dark:bg-slate-700 dark:text-slate-300">{getInitials(formData.name)}</AvatarFallback>
+      <form onSubmit={handleSubmit}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Left Column: Avatar & Basic Info */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader><CardTitle>Profile Picture</CardTitle></CardHeader>
+              <CardContent className="flex flex-col items-center gap-4">
+                <Avatar className="h-32 w-32 border-4 border-muted">
+                  <AvatarImage src={formData.avatarUrl} className="object-cover" />
+                  <AvatarFallback className="text-4xl">{getInitials(formData.name)}</AvatarFallback>
                 </Avatar>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('avatarUpload').click()} disabled={isLoading}>
-                    <Upload className="mr-2 h-4 w-4" /> Upload Image
-                  </Button>
-                  <Input type="file" id="avatarUpload" accept="image/*" onChange={handleAvatarFileChange} className="hidden" />
-                  <Button type="button" variant="outline" size="sm" disabled>
-                    <Camera className="mr-2 h-4 w-4" /> Take Photo
-                  </Button>
+                <div className="flex items-center w-full">
+                  <Label htmlFor="avatar-upload" className="cursor-pointer w-full">
+                    <div className="flex items-center justify-center w-full h-10 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors text-sm font-medium">
+                      <Upload className="mr-2 h-4 w-4" /> Upload Photo
+                    </div>
+                    <Input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                  </Label>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                <div>
-                  <Label htmlFor="name" className="dark:text-slate-300">Full Name <span className="text-red-500">*</span></Label>
-                  <Input id="name" name="name" value={formData.name} onChange={handleChange} placeholder="e.g., John Doe" required disabled={isLoading} />
-                </div>
-                <div>
-                  <Label htmlFor="dob" className="dark:text-slate-300">Date of Birth <span className="text-red-500">*</span></Label>
-                  <Input id="dob" name="dob" type="date" value={formData.dob} onChange={handleChange} required disabled={isLoading} />
-                </div>
-                {age && (
-                  <div className="md:col-span-2">
-                    <Label className="dark:text-slate-300">Age</Label>
-                    <Input value={age} readOnly disabled className="bg-muted/50 dark:bg-slate-700/50 dark:text-slate-400" />
+          {/* Right Column: Detailed Form */}
+          <div className="md:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Personal Information</CardTitle>
+                <CardDescription>Basic identification details.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Full Name *</Label>
+                    <div className="relative">
+                      <User className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input name="name" value={formData.name} onChange={handleInputChange} className="pl-9" required placeholder="John Doe" />
+                    </div>
                   </div>
-                )}
-                <div>
-                  <Label htmlFor="phone" className="dark:text-slate-300">Phone Number <span className="text-red-500">*</span></Label>
-                  <Input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleChange} placeholder="e.g., (555) 123-4567" required disabled={isLoading} />
+                  <div className="space-y-2">
+                    <Label>Date of Birth</Label>
+                    <div className="relative">
+                      <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input name="dob" type="date" value={formData.dob} onChange={handleInputChange} className="pl-9" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Gender</Label>
+                    <Select value={formData.gender} onValueChange={handleSelectChange}>
+                      <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phone Number *</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input name="phone" value={formData.phone} onChange={handleInputChange} className="pl-9" required placeholder="+91 98765..." />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email (Optional)</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input name="email" type="email" value={formData.email} onChange={handleInputChange} className="pl-9" placeholder="john@example.com" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Alternate Phone</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input name="alternatePhone" value={formData.alternatePhone} onChange={handleInputChange} className="pl-9" placeholder="Optional" />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="alternatePhone" className="dark:text-slate-300">Alternate Phone</Label>
-                  <Input id="alternatePhone" name="alternatePhone" type="tel" value={formData.alternatePhone} onChange={handleChange} placeholder="e.g., (555) 987-6543" disabled={isLoading} />
+                <div className="space-y-2">
+                  <Label>Address</Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-2.5 top-3 h-4 w-4 text-muted-foreground" />
+                    <Textarea name="address" value={formData.address} onChange={handleInputChange} className="pl-9 min-h-[80px]" placeholder="Full address..." />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="email" className="dark:text-slate-300">Email Address</Label>
-                  <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} placeholder="e.g., john.doe@example.com" disabled={isLoading} />
-                </div>
-                <div>
-                  <Label htmlFor="gender" className="dark:text-slate-300">Gender</Label>
-                  <Select name="gender" value={formData.gender} onValueChange={(value) => handleSelectChange('gender', value)} disabled={isLoading}>
-                    <SelectTrigger id="gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Male">Male</SelectItem>
-                      <SelectItem value="Female">Female</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                      <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="md:col-span-2">
-                  <Label htmlFor="address" className="dark:text-slate-300">Address</Label>
-                  <Textarea id="address" name="address" value={formData.address} onChange={handleChange} placeholder="e.g., 123 Main St, Anytown, USA" disabled={isLoading} />
-                </div>
-              </div>
-            </section>
+              </CardContent>
+            </Card>
 
-            <section>
-              <h3 className="text-lg font-semibold mb-4 text-primary border-b pb-2 flex items-center dark:text-sky-400 dark:border-slate-600"><HeartPulse className="mr-2 h-5 w-5"/>Medical Information</h3>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="medicalHistory" className="dark:text-slate-300">Medical History (Optional)</Label>
-                  <Textarea id="medicalHistory" name="medicalHistory" value={formData.medicalHistory} onChange={handleChange} placeholder="Relevant past illnesses, surgeries, conditions..." disabled={isLoading} />
+            <Card>
+              <CardHeader>
+                <CardTitle>Medical Profile</CardTitle>
+                <CardDescription>History and current condition.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Medical History</Label>
+                  <Textarea name="medicalHistory" value={formData.medicalHistory} onChange={handleInputChange} placeholder="Diabetes, Hypertension, surgeries..." />
                 </div>
-                <div>
-                  <Label htmlFor="allergies" className="flex items-center dark:text-slate-300"><ShieldAlert className="mr-2 h-4 w-4 text-red-500"/>Allergies (Optional)</Label>
-                  <Textarea id="allergies" name="allergies" value={formData.allergies} onChange={handleChange} placeholder="e.g., Penicillin, Latex, Peanuts" disabled={isLoading} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-red-500 flex items-center"><AlertCircle className="w-4 h-4 mr-1"/> Allergies</Label>
+                    <Input name="allergies" value={formData.allergies} onChange={handleInputChange} placeholder="Penicillin, Peanuts..." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Current Medications</Label>
+                    <Input name="currentMedications" value={formData.currentMedications} onChange={handleInputChange} placeholder="Metformin, Aspirin..." />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="currentMedications" className="flex items-center dark:text-slate-300"><Pill className="mr-2 h-4 w-4 text-blue-500"/>Current Medications (Optional)</Label>
-                  <Textarea id="currentMedications" name="currentMedications" value={formData.currentMedications} onChange={handleChange} placeholder="List all current medications and dosages" disabled={isLoading} />
-                </div>
-              </div>
-            </section>
-
-            <div className="flex justify-end space-x-3 pt-4 border-t dark:border-slate-700">
-              <Button type="button" variant="outline" onClick={() => navigate(isEditing ? `/patients/${patientId}` : '/patients')} disabled={isLoading}>
-                <X className="mr-2 h-4 w-4" /> Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading} className="bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-600/90 text-white">
-                {isLoading ? 'Saving...' : <><Save className="mr-2 h-4 w-4" /> {isEditing ? 'Save Changes' : 'Add Patient'}</>}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+              </CardContent>
+              <CardFooter className="flex justify-end gap-2 border-t pt-4">
+                <Button type="button" variant="outline" onClick={() => navigate('/patients')}>Cancel</Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  {isEditMode ? 'Update Patient' : 'Save Patient'}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+        </div>
+      </form>
     </motion.div>
   );
 };

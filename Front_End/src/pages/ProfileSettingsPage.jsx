@@ -2,9 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { User, Building, Save, ArrowLeft, Upload, Loader2, AlertTriangle } from 'lucide-react';
-import axios from 'axios'; // Make sure you have 'axios' installed
+import axios from 'axios';
 
-// UI Components (ensure these paths are correct for your project structure)
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,10 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/components/ui/use-toast';
 
-// API Base URL from your .env file
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// --- Initial empty states for before data is loaded ---
+// Initial state with empty strings to prevent React "null value" warnings
 const initialProfileState = { name: '', email: '', phone: '', avatarUrl: '', clinicName: '' };
 const initialClinicState = { name: '', logoUrl: '', openingHours: '', contactInfo: '' };
 
@@ -26,7 +24,6 @@ const ProfileSettingsPage = () => {
   const { tab } = useParams();
   const { toast } = useToast();
 
-  // --- State for data, files, loading, and errors ---
   const [doctorProfile, setDoctorProfile] = useState(initialProfileState);
   const [clinicSettings, setClinicSettings] = useState(initialClinicState);
   
@@ -40,35 +37,49 @@ const ProfileSettingsPage = () => {
   
   const [activeTab, setActiveTab] = useState(tab || 'profile');
 
-  // --- Fetch initial data from the API ---
+  // --- Helper to sanitize data (Turn nulls into empty strings) ---
+  const sanitizeProfile = (data) => ({
+    name: data.name || '',
+    email: data.email || '',
+    phone: data.phone || '',
+    avatarUrl: data.avatarUrl || '',
+    clinicName: data.clinicName || ''
+  });
+
+  const sanitizeClinic = (data) => ({
+    name: data.name || '',
+    logoUrl: data.logoUrl || '',
+    openingHours: data.openingHours || '',
+    contactInfo: data.contactInfo || ''
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Assuming endpoints like /api/profile and /api/clinic-settings
         const [profileRes, clinicRes] = await Promise.all([
           axios.get(`${API_BASE_URL}/profile`),
           axios.get(`${API_BASE_URL}/clinic-settings`)
         ]);
-        setDoctorProfile(profileRes.data || initialProfileState);
-        setClinicSettings(clinicRes.data || initialClinicState);
+        // Sanitize data before setting state
+        setDoctorProfile(profileRes.data ? sanitizeProfile(profileRes.data) : initialProfileState);
+        setClinicSettings(clinicRes.data ? sanitizeClinic(clinicRes.data) : initialClinicState);
       } catch (err) {
         console.error("Failed to fetch settings:", err);
-        setError("Could not load settings from the server. Please try again later.");
+        // Don't block UI on 500 error, just let user try to save fresh data
+        toast({ title: "Notice", description: "Could not load existing settings. You can start fresh.", variant: "default" });
       } finally {
         setIsLoading(false);
       }
     };
     fetchData();
-  }, []); // Runs once on component mount
+  }, [toast]); 
 
-  // This useEffect ensures the active tab updates if the URL param changes
   useEffect(() => {
     if (tab) setActiveTab(tab);
   }, [tab]);
 
-  // --- Input handlers ---
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
     setDoctorProfile(prev => ({ ...prev, [name]: value }));
@@ -79,14 +90,12 @@ const ProfileSettingsPage = () => {
     setClinicSettings(prev => ({ ...prev, [name]: value }));
   };
 
-  // --- Image handlers now also store the file object for upload ---
   const handleProfileAvatarChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setProfileAvatarFile(file); // Store the file for upload
+      setProfileAvatarFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        // Set preview URL
         setDoctorProfile(prev => ({ ...prev, avatarUrl: reader.result }));
       };
       reader.readAsDataURL(file);
@@ -96,42 +105,40 @@ const ProfileSettingsPage = () => {
   const handleClinicLogoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      setClinicLogoFile(file); // Store the file for upload
+      setClinicLogoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
-        // Set preview URL
         setClinicSettings(prev => ({ ...prev, logoUrl: reader.result }));
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // --- Save handlers to submit data to the API ---
   const handleSaveProfile = async () => {
     setIsSavingProfile(true);
     const formData = new FormData();
     
-    // Append all profile fields, excluding the temporary avatarUrl
     Object.keys(doctorProfile).forEach(key => {
-        if (key !== 'avatarUrl') formData.append(key, doctorProfile[key]);
+        // Only append if value exists and is not the temporary avatarUrl
+        if (key !== 'avatarUrl' && doctorProfile[key] !== null) {
+            formData.append(key, doctorProfile[key]);
+        }
     });
-    // Append the new avatar file if it exists
+
     if (profileAvatarFile) {
       formData.append('avatar', profileAvatarFile);
     }
 
     try {
-      // Use PUT (or POST) to update the profile
       const response = await axios.put(`${API_BASE_URL}/profile`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      // Update state with response from server, which may include new avatar URL
-      setDoctorProfile(response.data); 
-      setProfileAvatarFile(null); // Clear the file after successful upload
+      setDoctorProfile(sanitizeProfile(response.data)); 
+      setProfileAvatarFile(null); 
       toast({ title: "Profile Updated", description: "Your personal information has been saved." });
     } catch (err) {
       console.error("Failed to save profile:", err);
-      toast({ title: "Error", description: "Could not save your profile.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not save your profile. Check Backend Console.", variant: "destructive" });
     } finally {
       setIsSavingProfile(false);
     }
@@ -141,11 +148,12 @@ const ProfileSettingsPage = () => {
     setIsSavingClinic(true);
     const formData = new FormData();
 
-    // Append all clinic settings fields, excluding the temporary logoUrl
     Object.keys(clinicSettings).forEach(key => {
-        if (key !== 'logoUrl') formData.append(key, clinicSettings[key]);
+        if (key !== 'logoUrl' && clinicSettings[key] !== null) {
+            formData.append(key, clinicSettings[key]);
+        }
     });
-    // Append the new logo file if it exists
+
     if (clinicLogoFile) {
       formData.append('logo', clinicLogoFile);
     }
@@ -154,13 +162,11 @@ const ProfileSettingsPage = () => {
       const response = await axios.put(`${API_BASE_URL}/clinic-settings`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setClinicSettings(response.data);
+      setClinicSettings(sanitizeClinic(response.data));
       setClinicLogoFile(null);
       
-      // Update doctor's profile if clinic name changes
-      // This is important if doctorProfile.clinicName is meant to always reflect clinicSettings.name
       if (doctorProfile.clinicName !== response.data.name) {
-        setDoctorProfile(prev => ({ ...prev, clinicName: response.data.name }));
+        setDoctorProfile(prev => ({ ...prev, clinicName: response.data.name || '' }));
       }
       toast({ title: "Clinic Settings Updated", description: "Clinic information has been saved." });
     } catch (err) {
@@ -171,17 +177,14 @@ const ProfileSettingsPage = () => {
     }
   };
   
-  // Helper to get initials for avatar fallback
   const getInitials = (nameStr) => {
     if (!nameStr) return '?';
     const names = nameStr.split(' ');
     return names.length > 1 ? `${names[0][0]}${names[names.length - 1][0]}`.toUpperCase() : (names[0]?.[0]?.toUpperCase() || '?');
   };
   
-  // Determine if any saving operation is in progress
   const isSaving = isSavingProfile || isSavingClinic;
 
-  // --- UI for Loading and Error states ---
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -191,16 +194,8 @@ const ProfileSettingsPage = () => {
     );
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-12 text-destructive bg-red-50 dark:bg-red-900/20 rounded-lg">
-        <AlertTriangle size={48} className="mx-auto mb-4" />
-        <h3 className="text-xl font-semibold mb-2">An Error Occurred</h3>
-        <p>{error}</p>
-      </div>
-    );
-  }
-
+  // NOTE: Removed Error Blocking UI. Even if fetch fails, show the form so user can try to Create new data.
+  
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -221,14 +216,12 @@ const ProfileSettingsPage = () => {
           <CardDescription>Manage your personal and clinic information.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          {/* Tabs component to switch between Profile and Clinic settings */}
           <Tabs value={activeTab} onValueChange={(v) => !isSaving && setActiveTab(v)} className="w-full">
             <TabsList className="grid w-full grid-cols-2 rounded-none border-b bg-muted/30 dark:bg-slate-900/60 dark:border-slate-700">
               <TabsTrigger value="profile"><User className="mr-2 h-4 w-4" />My Profile</TabsTrigger>
               <TabsTrigger value="clinic"><Building className="mr-2 h-4 w-4" />Clinic Settings</TabsTrigger>
             </TabsList>
 
-            {/* Content for My Profile tab */}
             <TabsContent value="profile" className="p-6 space-y-6">
               <div className="flex flex-col items-center space-y-3">
                 <Avatar className="h-24 w-24 border-2 border-primary/30"><AvatarImage src={doctorProfile.avatarUrl} /><AvatarFallback>{getInitials(doctorProfile.name)}</AvatarFallback></Avatar>
@@ -246,7 +239,6 @@ const ProfileSettingsPage = () => {
               </Button>
             </TabsContent>
 
-            {/* Content for Clinic Settings tab */}
             <TabsContent value="clinic" className="p-6 space-y-6">
                 <div className="flex flex-col items-center space-y-3">
                 <Avatar className="h-24 w-24 border-2 border-primary/30 rounded-md"><AvatarImage src={clinicSettings.logoUrl} className="object-contain" /><AvatarFallback className="rounded-md">{getInitials(clinicSettings.name)}</AvatarFallback></Avatar>
