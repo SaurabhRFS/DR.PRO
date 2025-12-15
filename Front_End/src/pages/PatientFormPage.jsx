@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Save, X, Upload, User, Calendar, Phone, Mail, MapPin, AlertCircle, Loader2 } from 'lucide-react';
+import { Save, X, Upload, User, Calendar, Phone, Mail, MapPin, AlertCircle, Loader2, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,18 +9,17 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'; // Added Dialog imports
 import { useToast } from '@/components/ui/use-toast';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const PatientFormPage = () => {
-  // FIX 1: Matched variable name to App.jsx route ("/patients/:patientId/edit")
   const { patientId } = useParams(); 
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  // FIX 2: Check for patientId instead of id
   const isEditMode = !!patientId;
 
   const [isLoading, setIsLoading] = useState(false);
@@ -38,17 +37,22 @@ const PatientFormPage = () => {
     medicalHistory: '',
     allergies: '',
     currentMedications: '',
-    avatarUrl: '' // Added for preview
+    avatarUrl: ''
   });
   
   const [avatarFile, setAvatarFile] = useState(null);
+
+  // --- CAMERA STATE ---
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
 
   // Fetch data if in Edit Mode
   useEffect(() => {
     if (isEditMode) {
       const fetchPatient = async () => {
         try {
-          // FIX 3: Use patientId in API call
           const response = await axios.get(`${API_BASE_URL}/patients/${patientId}`);
           const p = response.data;
           setFormData({
@@ -75,7 +79,7 @@ const PatientFormPage = () => {
     } else {
         setIsFetching(false);
     }
-  }, [patientId, isEditMode, toast]); // FIX 4: Updated dependencies
+  }, [patientId, isEditMode, toast]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -90,12 +94,56 @@ const PatientFormPage = () => {
     const file = e.target.files[0];
     if (file) {
       setAvatarFile(file);
-      // Create local preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setFormData(prev => ({ ...prev, avatarUrl: reader.result }));
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // --- CAMERA FUNCTIONS ---
+  const startCamera = async () => {
+    try {
+      setIsCameraOpen(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraStream(stream);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err) {
+      console.error("Camera Error:", err);
+      toast({ title: "Camera Error", description: "Could not access camera. Check permissions.", variant: "destructive" });
+      setIsCameraOpen(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setIsCameraOpen(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob((blob) => {
+        const file = new File([blob], `capture_${Date.now()}.jpg`, { type: "image/jpeg" });
+        setAvatarFile(file);
+        setFormData(prev => ({ ...prev, avatarUrl: URL.createObjectURL(file) }));
+        toast({ title: "Photo Captured", description: "Image set as profile picture." });
+        stopCamera();
+      }, 'image/jpeg');
     }
   };
 
@@ -106,7 +154,6 @@ const PatientFormPage = () => {
     try {
       const dataToSend = new FormData();
       Object.keys(formData).forEach(key => {
-        // Only append if it's not the avatarUrl string (we send the file instead)
         if (key !== 'avatarUrl') {
             dataToSend.append(key, formData[key]);
         }
@@ -116,7 +163,6 @@ const PatientFormPage = () => {
         dataToSend.append('avatar', avatarFile);
       }
 
-      // FIX 5: Use patientId for PUT request
       if (isEditMode) {
         await axios.put(`${API_BASE_URL}/patients/${patientId}`, dataToSend, {
           headers: { 'Content-Type': 'multipart/form-data' }
@@ -135,7 +181,7 @@ const PatientFormPage = () => {
       console.error("Save error:", error);
       toast({ 
         title: "Error", 
-        description: "Failed to save patient. Please check the backend connection.", 
+        description: "Failed to save patient.", 
         variant: "destructive" 
       });
     } finally {
@@ -182,14 +228,21 @@ const PatientFormPage = () => {
                   <AvatarImage src={formData.avatarUrl} className="object-cover" />
                   <AvatarFallback className="text-4xl">{getInitials(formData.name)}</AvatarFallback>
                 </Avatar>
-                <div className="flex items-center w-full">
+                
+                {/* Updated Action Buttons Section */}
+                <div className="grid grid-cols-2 gap-2 w-full">
                   <Label htmlFor="avatar-upload" className="cursor-pointer w-full">
-                    <div className="flex items-center justify-center w-full h-10 px-4 py-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors text-sm font-medium">
-                      <Upload className="mr-2 h-4 w-4" /> Upload Photo
+                    <div className="flex items-center justify-center w-full h-10 px-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors text-xs sm:text-sm font-medium">
+                      <Upload className="mr-2 h-4 w-4" /> Upload
                     </div>
                     <Input id="avatar-upload" type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                   </Label>
+                  
+                  <Button type="button" variant="outline" className="w-full" onClick={startCamera}>
+                    <Camera className="mr-2 h-4 w-4" /> Camera
+                  </Button>
                 </div>
+
               </CardContent>
             </Card>
           </div>
@@ -292,6 +345,23 @@ const PatientFormPage = () => {
           </div>
         </div>
       </form>
+
+      {/* Camera Dialog */}
+      <Dialog open={isCameraOpen} onOpenChange={(open) => !open && stopCamera()}>
+        <DialogContent className="sm:max-w-md bg-black border-slate-800 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Camera className="h-5 w-5"/> Take Photo</DialogTitle>
+          </DialogHeader>
+          <div className="relative aspect-video bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
+             <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover transform -scale-x-100" />
+             <canvas ref={canvasRef} className="hidden" />
+          </div>
+          <DialogFooter className="flex justify-between gap-2">
+             <Button variant="ghost" onClick={stopCamera} className="text-slate-400 hover:text-white hover:bg-slate-800">Cancel</Button>
+             <Button onClick={capturePhoto} className="bg-white text-black hover:bg-slate-200"><Camera className="mr-2 h-4 w-4"/> Capture</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 };

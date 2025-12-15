@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Users, UserPlus, Search, ArrowUpDown, Filter, CalendarMinus, DollarSign, Loader2, AlertTriangle } from 'lucide-react';
-import axios from 'axios'; // Make sure you have 'axios' installed
+import axios from 'axios';
 
-// UI Components (ensure these paths are correct for your project structure)
+// UI Components
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -18,11 +18,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// API Base URL from your .env file
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const PatientsListPage = () => {
-  // --- REFACTORED: State for data, loading, and errors ---
   const [patients, setPatients] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,19 +29,16 @@ const PatientsListPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState('name-asc');
 
-  // --- REFACTORED: Fetch data from API on component mount ---
- useEffect(() => {
+  useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // This connects to the Backend APIs we created
         const [patientsResponse, appointmentsResponse] = await Promise.all([
           axios.get(`${API_BASE_URL}/patients`),
           axios.get(`${API_BASE_URL}/appointments`)
         ]);
         
-        // If the array is empty, it means DB is empty, NOT that it failed.
         setPatients(patientsResponse.data || []);
         setAppointments(appointmentsResponse.data || []);
       } catch (err) {
@@ -56,8 +51,6 @@ const PatientsListPage = () => {
 
     fetchData();
   }, []);
-
-  // --- The following logic remains largely the same, but now uses state variables ---
 
   const getPatientTotalCost = (patientId) => {
     return appointments
@@ -98,7 +91,6 @@ const PatientsListPage = () => {
         break;
       case 'lastVisit-asc':
         filtered.sort((a, b) => {
-          // Handle null/undefined dates: nulls go to the end for ascending
           const dateA = a.lastVisitDate ? new Date(a.lastVisitDate).getTime() : Infinity;
           const dateB = b.lastVisitDate ? new Date(b.lastVisitDate).getTime() : Infinity;
           return dateA - dateB;
@@ -106,8 +98,7 @@ const PatientsListPage = () => {
         break;
       case 'lastVisit-desc':
         filtered.sort((a, b) => {
-          // Handle null/undefined dates: nulls go to the end for descending
-          const dateA = a.lastVisitDate ? new Date(a.lastVisitDate).getTime() : -Infinity; // Use -Infinity for descending
+          const dateA = a.lastVisitDate ? new Date(a.lastVisitDate).getTime() : -Infinity;
           const dateB = b.lastVisitDate ? new Date(b.lastVisitDate).getTime() : -Infinity;
           return dateB - dateA;
         });
@@ -133,7 +124,6 @@ const PatientsListPage = () => {
     return names[0]?.[0]?.toUpperCase() || 'P';
   };
   
-  // --- UI for Loading and Error states ---
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -153,7 +143,6 @@ const PatientsListPage = () => {
     );
   }
 
-  // --- Main component render ---
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -223,16 +212,27 @@ const PatientsListPage = () => {
                 >
                   <Link to={`/patients/${patient.id}`} className="block h-full">
                     <Card className="h-full hover:shadow-xl transition-all duration-300 ease-out group dark:bg-slate-800 dark:hover:bg-slate-700/80 dark:border-slate-700">
-                      <CardHeader className="flex flex-row items-center gap-4 p-4">
-                        <Avatar className="h-12 w-12 border-2 border-primary/20 dark:border-sky-500/30">
-                          <AvatarImage src={patient.avatarUrl} alt={patient.name} />
-                          <AvatarFallback className="bg-muted dark:bg-slate-700 dark:text-slate-300">{getInitials(patient.name)}</AvatarFallback>
+                      
+                      {/* --- UPDATED CARD HEADER: LARGER AVATAR (h-24 w-24) --- */}
+                      <CardHeader className="flex flex-row items-center gap-6 p-6">
+                        <Avatar className="h-24 w-24 border-4 border-white dark:border-slate-600 shadow-md">
+                          <AvatarImage src={patient.avatarUrl} alt={patient.name} className="object-cover" />
+                          <AvatarFallback className="bg-muted dark:bg-slate-700 dark:text-slate-300 text-3xl font-bold">
+                            {getInitials(patient.name)}
+                          </AvatarFallback>
                         </Avatar>
-                        <div>
-                          <CardTitle className="text-lg group-hover:text-primary dark:text-slate-100 dark:group-hover:text-sky-400">{patient.name}</CardTitle>
-                          <CardDescription className="text-sm dark:text-slate-400">{patient.phone}</CardDescription>
+                        
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-xl font-bold group-hover:text-primary dark:text-slate-100 dark:group-hover:text-sky-400 truncate">
+                            {patient.name}
+                          </CardTitle>
+                          <CardDescription className="text-base mt-1 dark:text-slate-400">
+                            {patient.phone}
+                          </CardDescription>
                         </div>
                       </CardHeader>
+                      {/* ---------------------------------------------------- */}
+
                       <CardContent className="p-4 pt-0 text-sm text-muted-foreground dark:text-slate-400">
                         {patient.lastVisitDate ? (
                           <div className="flex items-center mb-1">

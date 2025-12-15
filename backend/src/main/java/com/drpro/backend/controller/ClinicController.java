@@ -1,5 +1,6 @@
 package com.drpro.backend.controller;
 
+import com.drpro.backend.dto.AppointmentDTO;
 import com.drpro.backend.model.*;
 import com.drpro.backend.repository.*;
 import com.drpro.backend.service.CloudinaryService;
@@ -8,6 +9,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+
+import java.util.stream.Collectors;
+import java.util.Map;
+
 
 import java.time.LocalDate;
 import java.util.List;
@@ -132,8 +138,35 @@ public class ClinicController {
     // ================= APPOINTMENTS =================
 
     @GetMapping("/appointments")
-    public List<Appointment> getAppointments() {
-        return appointmentRepo.findAll();
+    public List<AppointmentDTO> getAppointments() {
+        // 1. Fetch all data
+        List<Appointment> appointments = appointmentRepo.findAll();
+        List<Patient> patients = patientRepo.findAll();
+
+        // 2. Create a Map for O(1) fast lookup of patient names by ID
+        // Map<PatientID, PatientName>
+        Map<Long, String> patientMap = patients.stream()
+            .collect(Collectors.toMap(Patient::getId, Patient::getName));
+
+        // 3. Convert Entity -> DTO and enrich with Name
+        return appointments.stream().map(app -> {
+            AppointmentDTO dto = new AppointmentDTO();
+            dto.setId(app.getId());
+            dto.setPatientId(app.getPatientId());
+            dto.setDate(app.getDate());
+            dto.setTime(app.getTime());
+            dto.setCost(app.getCost());
+            dto.setStatus(app.getStatus());
+            
+            // Logic to handle missing names or orphans
+            String name = patientMap.get(app.getPatientId());
+            dto.setPatientName(name != null ? name : "Unknown Patient (ID: " + app.getPatientId() + ")");
+            
+            // Logic to ensure notes are never null (Final Polish)
+            dto.setNotes(app.getNotes() != null && !app.getNotes().isEmpty() ? app.getNotes() : "General Visit");
+
+            return dto;
+        }).collect(Collectors.toList());
     }
 
     @PostMapping("/appointments")

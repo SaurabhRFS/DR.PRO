@@ -19,7 +19,7 @@ const Layout = ({ children }) => {
       </motion.main>
       <footer className="hidden md:block py-6 text-center text-sm text-muted-foreground border-t border-border/50">
         © {new Date().getFullYear()} DentistPro. All rights reserved.
-        Powered by Hostinger Horizons.
+        Developed by Saurabh Bawankule.
       </footer>
       <BottomNav /> {/* For mobile navigation */}
       <Toaster />

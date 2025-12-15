@@ -14,11 +14,9 @@ import FinanceCalendar from '@/components/finance/FinanceCalendar';
 import FinanceChart from '@/components/finance/FinanceChart';
 import FinanceDetailsModal from '@/components/finance/FinanceDetailsModal';
 
-// --- API Utility (Corrected) ---
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const api = {
-  // FIX: Used template literal (backticks ``) for string interpolation
   getAppointments: async () => {
     const response = await fetch(`${API_BASE_URL}/appointments`);
     if (!response.ok) throw new Error('Failed to fetch appointments');
@@ -58,7 +56,6 @@ const api = {
     return response.json();
   },
 };
-// --- End API Utility ---
 
 const FinancePage = () => {
   const [appointments, setAppointments] = useState([]);
@@ -96,13 +93,13 @@ const FinancePage = () => {
       console.error("Error fetching finance data:", error);
       toast({
         title: "Error",
-        description: "Failed to load finance data. Please try again.",
+        description: "Failed to load finance data.",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  }, [toast]); // Removed state setters as they are stable
+  }, [toast]);
 
   useEffect(() => {
     fetchData();
@@ -118,7 +115,6 @@ const FinancePage = () => {
 
   const getPatientName = useCallback((patientId) => {
     const patient = patients.find(p => p.id === patientId);
-    // FIX: Used backticks for string interpolation
     return patient ? patient.name : `ID: ${patientId}`;
   }, [patients]);
 
@@ -141,7 +137,7 @@ const FinancePage = () => {
         break;
       case 'This Week':
         const currentDay = now.getDay();
-        const diff = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1); // Monday as start of week
+        const diff = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1); 
         startDate = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
         endDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate() + 6, 23, 59, 59, 999);
         break;
@@ -179,11 +175,9 @@ const FinancePage = () => {
     appointments
       .filter(app => app.status === 'Done' && app.cost)
       .map(app => ({
-        // FIX: Used backticks for string interpolation
         id: `app-${app.id}`,
         source: 'Patient Appointment',
         amount: parseFloat(app.cost),
-        // FIX: Used backticks for string interpolation
         notes: `Appointment: ${app.notes || 'Treatment'} for ${getPatientName(app.patientId)}`,
         date: app.date,
         patientId: app.patientId,
@@ -193,7 +187,6 @@ const FinancePage = () => {
 
   const allRevenueSources = useMemo(() => [
       ...completedAppointmentsRevenue,
-      // FIX: Used backticks for string interpolation in notes
       ...revenueEntries.map(r => ({ ...r, notes: r.notes || (r.patientId ? `Payment from ${getPatientName(r.patientId)}` : 'Misc. Revenue') }))
   ], [completedAppointmentsRevenue, revenueEntries, getPatientName]);
 
@@ -246,7 +239,6 @@ const FinancePage = () => {
     setIsExpenseFormOpen(true);
   };
   
-  // FIX: Added color map for border styles and used backticks for currency values.
   const colorMap = {
     'text-green-500': 'border-green-500',
     'text-red-500': 'border-red-500',
@@ -319,11 +311,9 @@ const FinancePage = () => {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3, delay: index * 0.1 }}
           >
-            {/* FIX: Replaced invalid inline style with Tailwind classes */}
             <Card className={`overflow-hidden hover:shadow-xl transition-shadow duration-300 ease-out border-l-4 dark:bg-slate-800/70 ${colorMap[item.color] || 'border-transparent'}`}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground dark:text-slate-300">{item.title}</CardTitle>
-                {/* FIX: Used backticks for dynamic classNames */}
                 <div className={`p-2 rounded-full ${item.bgColor}`}>
                   {isLoading ? <Loader2 className={`h-5 w-5 animate-spin ${item.color}`} /> : <item.icon className={`h-5 w-5 ${item.color}`} />}
                 </div>
@@ -334,7 +324,6 @@ const FinancePage = () => {
                 </div>
               </CardContent>
               <CardFooter className="pt-2 pb-3 flex justify-between items-center">
-                 {/* FIX: Simplified onClick logic to avoid adding revenue from expense card etc. */}
                 <Button size="sm" variant="ghost" className="text-xs justify-start text-muted-foreground hover:text-primary dark:text-slate-400 dark:hover:text-sky-400" onClick={() => item.detailsKey === 'revenue' ? setIsRevenueFormOpen(true) : setIsExpenseFormOpen(true)}>
                     <PlusCircle className="h-3.5 w-3.5 mr-1.5" /> Add Entry
                 </Button>
@@ -417,10 +406,9 @@ const FinancePage = () => {
         totalRevenueForPeriod={totalRevenue}
         totalExpensesForPeriod={totalExpenses}
         netProfitForPeriod={netProfit}
+        appointments={appointments}
       />
-      {/* End Modals */}
 
-      {/* --- CHARTS AND CALENDAR --- */}
       <Card className="dark:bg-slate-800/70">
         <CardHeader>
           <CardTitle className="text-foreground dark:text-slate-200">Quick Expense Actions</CardTitle>
@@ -447,7 +435,12 @@ const FinancePage = () => {
             onDateClick={handleDateClickForDetails}
           />
 
-          <FinanceChart revenueData={allRevenueSources} expenseData={expenseEntries} filterType={filter} dateRange={currentFilterStartDate && currentFilterEndDate ? { start: currentFilterStartDate, end: currentFilterEndDate } : null} />
+          <FinanceChart 
+            revenueData={allRevenueSources} 
+            expenseData={expenseEntries} 
+            filterType={filter} 
+            dateRange={currentFilterStartDate && currentFilterEndDate ? { start: currentFilterStartDate, end: currentFilterEndDate } : null} 
+          />
         </>
       )}
     </motion.div>
