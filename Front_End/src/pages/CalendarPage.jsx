@@ -23,17 +23,33 @@ const CalendarPage = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [appointmentsRes, revenueRes, expensesRes] = await Promise.all([
+        // 1. Fetch Appointments, Finance, AND Patients
+        const [appointmentsRes, revenueRes, expensesRes, patientsRes] = await Promise.all([
           axios.get(`${API_BASE_URL}/appointments`),
           axios.get(`${API_BASE_URL}/revenue`),
-          axios.get(`${API_BASE_URL}/expenses`)
+          axios.get(`${API_BASE_URL}/expenses`),
+          axios.get(`${API_BASE_URL}/patients`) // <--- New Fetch
         ]);
 
+        const patients = patientsRes.data || [];
+        const rawAppointments = appointmentsRes.data || [];
+
+        // 2. "Enrich" the appointments with Patient Names
+        const enrichedAppointments = rawAppointments.map(app => {
+            const patient = patients.find(p => p.id === app.patientId);
+            return {
+                ...app,
+                patientName: patient ? patient.name : 'Unknown Patient', // Attach Name
+                notes: app.notes || app.treatmentName || 'General Visit' // Ensure notes exist
+            };
+        });
+
         setData({
-          appointments: appointmentsRes.data || [],
+          appointments: enrichedAppointments,
           revenue: revenueRes.data || [],
           expenses: expensesRes.data || []
         });
+
       } catch (error) {
         console.error("Failed to load calendar data:", error);
         toast({ title: "Error", description: "Could not load calendar data.", variant: "destructive" });

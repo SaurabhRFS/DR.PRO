@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,18 +17,28 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-
 const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
   const today = new Date().toISOString().split('T')[0];
+  
+  // LOGIC FIX: We separate "Preview" (String) from "File" (Object)
   const [formData, setFormData] = useState({
     treatmentName: '',
     notes: '',
-    prescriptionFile: null,
-    prescriptionFileName: '',
-    additionalFile: null,
-    additionalFileName: '',
     date: today,
+    
+    // Display fields (URLs or Data Strings)
+    prescriptionFileName: '',
+    prescriptionPreview: null,
+    additionalFileName: '',
+    additionalPreview: null,
+
+    // Upload fields (Raw File Objects)
+    prescriptionFile: null, 
+    additionalFile: null,
+    
+    isFromAppointment: false,
   });
+
   const { toast } = useToast();
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraForField, setCameraForField] = useState(null); 
@@ -41,22 +50,28 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
       setFormData({
         treatmentName: record.treatmentName || '',
         notes: record.notes || '',
-        prescriptionFile: record.prescriptionFile || null,
-        prescriptionFileName: record.prescriptionFileName || '',
-        additionalFile: record.additionalFile || null,
-        additionalFileName: record.additionalFileName || '',
         date: record.date || today,
+        // Load existing URLs for preview
+        prescriptionFileName: record.prescriptionFileName || '',
+        prescriptionPreview: record.prescriptionUrl || null,
+        additionalFileName: record.additionalFileName || '',
+        additionalPreview: record.additionalFileUrl || null,
+        // Reset raw files on edit (user must re-upload to change)
+        prescriptionFile: null,
+        additionalFile: null,
         isFromAppointment: record.isFromAppointment || false, 
       });
     } else {
       setFormData({
         treatmentName: '',
         notes: '',
-        prescriptionFile: null,
-        prescriptionFileName: '',
-        additionalFile: null,
-        additionalFileName: '',
         date: today,
+        prescriptionFileName: '',
+        prescriptionPreview: null,
+        additionalFileName: '',
+        additionalPreview: null,
+        prescriptionFile: null,
+        additionalFile: null,
         isFromAppointment: false,
       });
     }
@@ -67,12 +82,27 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleFileChange = (e, fieldName, fileNameField) => {
+  // LOGIC FIX: Store Raw File AND Preview
+  const handleFileChange = (e, fieldType) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, [fieldName]: reader.result, [fileNameField]: file.name }));
+        if (fieldType === 'prescription') {
+            setFormData(prev => ({ 
+                ...prev, 
+                prescriptionFile: file, 
+                prescriptionPreview: reader.result,
+                prescriptionFileName: file.name
+            }));
+        } else {
+            setFormData(prev => ({ 
+                ...prev, 
+                additionalFile: file, 
+                additionalPreview: reader.result,
+                additionalFileName: file.name
+            }));
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -94,6 +124,7 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
     }
   };
 
+  // LOGIC FIX: Convert Camera Canvas to File Blob
   const capturePhoto = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
@@ -102,12 +133,29 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
       canvas.height = video.videoHeight;
       const context = canvas.getContext('2d');
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/png');
-      const fieldName = cameraForField;
-      const fileNameField = cameraForField === 'prescriptionFile' ? 'prescriptionFileName' : 'additionalFileName';
       
-      setFormData(prev => ({ ...prev, [fieldName]: dataUrl, [fileNameField]: `photo-${Date.now()}.png` }));
-      stopCamera();
+      // 1. Get Blob for Upload
+      canvas.toBlob((blob) => {
+        const file = new File([blob], `photo-${Date.now()}.png`, { type: "image/png" });
+        const previewUrl = URL.createObjectURL(blob);
+
+        if (cameraForField === 'prescriptionFile') {
+            setFormData(prev => ({ 
+                ...prev, 
+                prescriptionFile: file, 
+                prescriptionPreview: previewUrl,
+                prescriptionFileName: file.name
+            }));
+        } else {
+            setFormData(prev => ({ 
+                ...prev, 
+                additionalFile: file, 
+                additionalPreview: previewUrl,
+                additionalFileName: file.name
+            }));
+        }
+        stopCamera();
+      }, 'image/png');
     }
   };
   
@@ -122,7 +170,7 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...formData, id: record ? record.id : Date.now().toString() });
+    onSave({ ...formData, id: record ? record.id : undefined });
     onOpenChange(false);
   };
 
@@ -157,10 +205,17 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
               <Input id="date" name="date" type="date" value={formData.date} onChange={handleInputChange} className="dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600" />
             </div>
             
+            {/* RESTORED UI: Complex Input Group for Prescription */}
             <div className="space-y-1">
               <Label htmlFor="prescriptionFile" className="dark:text-slate-300">Upload Prescription (Image/PDF)</Label>
               <div className="flex gap-2 items-stretch">
-                <Input id="prescriptionFile" type="file" accept="image/*,.pdf" onChange={(e) => handleFileChange(e, 'prescriptionFile', 'prescriptionFileName')} className="flex-grow file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-sky-500/20 dark:file:text-sky-400 dark:hover:file:bg-sky-500/30 dark:text-slate-300 h-9" />
+                <Input 
+                    id="prescriptionFile" 
+                    type="file" 
+                    accept="image/*,.pdf" 
+                    onChange={(e) => handleFileChange(e, 'prescription')} 
+                    className="flex-grow file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-sky-500/20 dark:file:text-sky-400 dark:hover:file:bg-sky-500/30 dark:text-slate-300 h-9" 
+                />
                 <Button type="button" variant="outline" size="icon" onClick={() => startCamera('prescriptionFile')} className="h-9 w-9 flex-shrink-0 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-700">
                   <Camera className="h-4 w-4" />
                 </Button>
@@ -168,16 +223,24 @@ const DentalRecordFormDialog = ({ isOpen, onOpenChange, record, onSave }) => {
               {formData.prescriptionFileName && <p className="text-xs text-muted-foreground dark:text-slate-400 mt-1">Selected: {formData.prescriptionFileName}</p>}
             </div>
             
+            {/* RESTORED UI: Complex Input Group for Additional File */}
             <div className="space-y-1">
               <Label htmlFor="additionalFile" className="dark:text-slate-300">Upload X-ray or Additional File</Label>
                <div className="flex gap-2 items-stretch">
-                <Input id="additionalFile" type="file" accept="image/*,.pdf,.doc,.docx" onChange={(e) => handleFileChange(e, 'additionalFile', 'additionalFileName')} className="flex-grow file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-sky-500/20 dark:file:text-sky-400 dark:hover:file:bg-sky-500/30 dark:text-slate-300 h-9" />
+                <Input 
+                    id="additionalFile" 
+                    type="file" 
+                    accept="image/*,.pdf,.doc,.docx" 
+                    onChange={(e) => handleFileChange(e, 'additional')} 
+                    className="flex-grow file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 dark:file:bg-sky-500/20 dark:file:text-sky-400 dark:hover:file:bg-sky-500/30 dark:text-slate-300 h-9" 
+                />
                 <Button type="button" variant="outline" size="icon" onClick={() => startCamera('additionalFile')} className="h-9 w-9 flex-shrink-0 dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-700">
                   <Camera className="h-4 w-4" />
                 </Button>
               </div>
               {formData.additionalFileName && <p className="text-xs text-muted-foreground dark:text-slate-400 mt-1">Selected: {formData.additionalFileName}</p>}
             </div>
+
             {record?.isFromAppointment && (
                 <p className="text-xs text-blue-600 dark:text-blue-400 p-2 bg-blue-100 dark:bg-blue-900/30 rounded-md flex items-center">
                     <Info className="h-4 w-4 mr-2 flex-shrink-0"/>This record originated from an appointment. Editing here will update this specific dental record.
@@ -306,28 +369,17 @@ const PatientDentalRecordsTab = ({ patientId, dentalRecords, onRecordAdd, onReco
                 <CardContent className="px-4 pb-3 space-y-2">
                   {record.notes && <p className="text-sm text-muted-foreground dark:text-slate-300"><strong>Notes:</strong> {record.notes}</p>}
                   
-                  {record.prescriptionFile && (
+                  {/* LOGIC FIX: Display Images using stored URLs */}
+                  {record.prescriptionUrl && (
                     <div className="mt-2">
                       <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400">Prescription:</p>
-                       {record.prescriptionFile.startsWith('data:image') ? (
-                         <img-replace src={record.prescriptionFile} alt={record.prescriptionFileName || 'Prescription Image'} className="mt-1 rounded-md max-h-32 object-contain border dark:border-slate-600 cursor-pointer" onClick={() => window.open(record.prescriptionFile)} />
-                       ) : (
-                         <a href={record.prescriptionFile} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline dark:text-sky-400 flex items-center">
-                           <FileImage className="h-4 w-4 mr-1" /> {record.prescriptionFileName || 'View Prescription File'}
-                         </a>
-                       )}
+                       <img src={record.prescriptionUrl} alt="Prescription" className="mt-1 rounded-md max-h-32 object-contain border dark:border-slate-600 cursor-pointer" onClick={() => window.open(record.prescriptionUrl)} />
                     </div>
                   )}
-                  {record.additionalFile && (
+                  {record.additionalFileUrl && (
                      <div className="mt-2">
                       <p className="text-xs font-semibold text-muted-foreground dark:text-slate-400">Additional File / X-ray:</p>
-                       {record.additionalFile.startsWith('data:image') ? (
-                         <img-replace src={record.additionalFile} alt={record.additionalFileName || 'Additional File Image'} className="mt-1 rounded-md max-h-32 object-contain border dark:border-slate-600 cursor-pointer" onClick={() => window.open(record.additionalFile)} />
-                       ) : (
-                         <a href={record.additionalFile} target="_blank" rel="noopener noreferrer" className="text-sm text-primary underline dark:text-sky-400 flex items-center">
-                           <Upload className="h-4 w-4 mr-1" /> {record.additionalFileName || 'View Additional File'}
-                         </a>
-                       )}
+                       <img src={record.additionalFileUrl} alt="X-Ray" className="mt-1 rounded-md max-h-32 object-contain border dark:border-slate-600 cursor-pointer" onClick={() => window.open(record.additionalFileUrl)} />
                     </div>
                   )}
                 </CardContent>

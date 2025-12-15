@@ -10,6 +10,10 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.core.io.InputStreamResource;
+    import org.springframework.http.HttpHeaders;
+    import org.springframework.http.ResponseEntity;
+
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +31,9 @@ public class FinanceController {
 
     @Autowired
     private CloudinaryService cloudinaryService;
+
+    @Autowired
+    private com.drpro.backend.service.InvoiceService invoiceService; // Inject the service
 
     // ================= REVENUE (PAYMENTS) =================
 
@@ -108,5 +115,22 @@ public class FinanceController {
         response.put("netProfit", totalRevenue - totalExpenses);
         
         return response;
+    }
+
+    @GetMapping("/payments/{id}/invoice")
+    public ResponseEntity<InputStreamResource> downloadInvoice(@PathVariable Long id) {
+        Payment payment = paymentRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Payment not found"));
+
+        java.io.ByteArrayInputStream bis = invoiceService.generateInvoice(payment);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Content-Disposition", "inline; filename=invoice-" + id + ".pdf");
+
+        return ResponseEntity
+                .ok()
+                .headers(headers)
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(new InputStreamResource(bis));
     }
 }
