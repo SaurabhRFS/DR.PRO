@@ -8,13 +8,14 @@ import lombok.Data;
 @Table(name = "doctor_profile")
 public class DoctorProfile {
     @Id
-    private Long id = 1L; // We enforce ID=1 so there is only ever ONE profile
+    private Long id = 1L; // Enforce Singleton
 
     private String name;
     private String email;
     private String phone;
     private String clinicName;
     
-    @Column(length = 1000)
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
     private String avatarUrl;
 }

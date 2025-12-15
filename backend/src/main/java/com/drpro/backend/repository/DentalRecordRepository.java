@@ -2,10 +2,12 @@ package com.drpro.backend.repository;
 
 import com.drpro.backend.model.DentalRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 import java.util.List;
 
-@Repository
 public interface DentalRecordRepository extends JpaRepository<DentalRecord, Long> {
-    List<DentalRecord> findByPatientId(Long patientId);
+    // Magic method: Finds by Patient ID and Sorts by Date (Newest/Descending first)
+    List<DentalRecord> findByPatientIdOrderByDateDesc(Long patientId);
+    
+    // Fallback: If we ever need all records sorted
+    List<DentalRecord> findAllByOrderByDateDesc();
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Smile, Loader2 } from 'lucide-react';
+import { Smile, Loader2, AlertTriangle } from 'lucide-react'; // Added AlertTriangle icon
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,7 +10,45 @@ import AppointmentFormDialog from '@/components/appointments/AppointmentFormDial
 import { useToast } from '@/components/ui/use-toast';
 import axios from 'axios';
 
+// --- NEW IMPORTS FOR CUSTOM DELETE DIALOG ---
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
+
+// --- HELPERS (Keep these for sorting/saving) ---
+const parseUniversalDate = (dateInput) => {
+  if (!dateInput) return new Date();
+  if (Array.isArray(dateInput)) {
+    const [year, month, day] = dateInput;
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateInput);
+};
+
+const prepareForApi = (appointment) => {
+  const payload = { ...appointment };
+  if (payload.date) {
+    const d = parseUniversalDate(payload.date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    payload.date = `${year}-${month}-${day}`;
+  }
+  if (payload.time && payload.time.length === 5) {
+      payload.time = payload.time + ":00";
+  }
+  delete payload.patientName; 
+  return payload;
+};
 
 const AppointmentsPage = () => {
   const [appointments, setAppointments] = useState([]);
@@ -18,6 +56,10 @@ const AppointmentsPage = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // --- NEW STATE FOR DELETE DIALOG ---
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [appointmentToDelete, setAppointmentToDelete] = useState(null);
   
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,24 +95,30 @@ const AppointmentsPage = () => {
     if (isHistoryTab) {
       filtered = filtered.filter(app =>
         ['Done', 'Cancelled', 'Missed'].includes(app.status) ||
-        new Date(app.date) < new Date(today)
+        parseUniversalDate(app.date) < new Date(today)
       );
     } else if (currentTabFilter === 'today') {
-      filtered = filtered.filter(app =>
-        app.date === today && !['Done', 'Cancelled', 'Missed'].includes(app.status)
-      );
+      filtered = filtered.filter(app => {
+        const appDate = parseUniversalDate(app.date).toISOString().split('T')[0];
+        return appDate === today && !['Done', 'Cancelled', 'Missed'].includes(app.status);
+      });
     } else {
       // Upcoming
       filtered = filtered.filter(app =>
-        new Date(app.date) >= new Date(today) &&
+        parseUniversalDate(app.date) >= new Date(today) &&
         !['Done', 'Cancelled', 'Missed'].includes(app.status)
       );
     }
 
     return filtered.sort((a, b) => {
-      const dateA = new Date(`${a.date} ${a.time || '00:00'}`);
-      const dateB = new Date(`${b.date} ${b.time || '00:00'}`);
-      return isHistoryTab ? dateB - dateA : dateA - dateB;
+      const dateA = parseUniversalDate(a.date);
+      const dateB = parseUniversalDate(b.date);
+      if (dateA.getTime() !== dateB.getTime()) {
+         return isHistoryTab ? dateB - dateA : dateA - dateB;
+      }
+      const timeA = a.time ? parseInt(a.time.replace(/:/g, '')) : 0;
+      const timeB = b.time ? parseInt(b.time.replace(/:/g, '')) : 0;
+      return isHistoryTab ? timeB - timeA : timeA - timeB;
     });
   }, [appointments, currentTabFilter, today]);
 
@@ -83,18 +131,17 @@ const AppointmentsPage = () => {
 
   const handleSaveAppointment = async (appointmentData) => {
     try {
+      const payload = prepareForApi(appointmentData);
       let saved;
       if (editingAppointment) {
-        // Update
-        const res = await axios.put(`${API_BASE_URL}/appointments/${appointmentData.id}`, appointmentData);
+        const res = await axios.put(`${API_BASE_URL}/appointments/${appointmentData.id}`, payload);
         saved = res.data;
-        setAppointments(prev => prev.map(app => app.id === saved.id ? saved : app));
+        setAppointments(prev => prev.map(app => app.id === saved.id ? { ...saved, patientName: getPatientName(saved.patientId) } : app));
         toast({ title: "Appointment Updated" });
       } else {
-        // Create
-        const res = await axios.post(`${API_BASE_URL}/appointments`, appointmentData);
+        const res = await axios.post(`${API_BASE_URL}/appointments`, payload);
         saved = res.data;
-        setAppointments(prev => [...prev, saved]);
+        setAppointments(prev => [...prev, { ...saved, patientName: getPatientName(saved.patientId) }]);
         toast({ title: "Appointment Created" });
       }
       setIsFormOpen(false);
@@ -105,32 +152,37 @@ const AppointmentsPage = () => {
     }
   };
 
-  const handleDelete = async (appointment) => {
-    if(!window.confirm("Are you sure you want to delete this appointment?")) return;
+  // --- STEP 1: TRIGGER THE DIALOG (Don't delete yet) ---
+  const handleDeleteTrigger = (appointment) => {
+    setAppointmentToDelete(appointment);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // --- STEP 2: ACTUALLY DELETE (Called by Dialog) ---
+  const confirmDelete = async () => {
+    if (!appointmentToDelete) return;
+    
     try {
-      await axios.delete(`${API_BASE_URL}/appointments/${appointment.id}`);
-      setAppointments(prev => prev.filter(a => a.id !== appointment.id));
+      await axios.delete(`${API_BASE_URL}/appointments/${appointmentToDelete.id}`);
+      setAppointments(prev => prev.filter(a => a.id !== appointmentToDelete.id));
       toast({ title: "Appointment Deleted" });
     } catch (error) {
       console.error("Delete failed", error);
       toast({ title: "Error", description: "Could not delete appointment.", variant: "destructive" });
+    } finally {
+      // Close dialog and reset state
+      setIsDeleteDialogOpen(false);
+      setAppointmentToDelete(null);
     }
   };
 
   const handleStatusChange = async (appointment, newStatus) => {
     try {
-      // Create updated object
-      const updatedApp = { ...appointment, status: newStatus };
-      
-      // Call API
-      await axios.put(`${API_BASE_URL}/appointments/${appointment.id}`, updatedApp);
-      
-      // Update UI
-      setAppointments(prev => prev.map(app => app.id === appointment.id ? updatedApp : app));
-      
+      const payload = prepareForApi({ ...appointment, status: newStatus });
+      const res = await axios.put(`${API_BASE_URL}/appointments/${appointment.id}`, payload);
+      const updated = res.data;
+      setAppointments(prev => prev.map(app => app.id === appointment.id ? { ...updated, patientName: getPatientName(updated.patientId) } : app));
       toast({ title: `Marked as ${newStatus}` });
-
-      // Special check: If marked as Done, maybe refresh data to update dashboard stats logic if needed elsewhere
     } catch (error) {
       console.error("Status update failed", error);
       toast({ title: "Error", description: "Failed to update status.", variant: "destructive" });
@@ -171,6 +223,32 @@ const AppointmentsPage = () => {
         onSave={handleSaveAppointment}
       />
 
+      {/* --- CUSTOM DELETE CONFIRMATION DIALOG --- */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent className="glassmorphic dark:bg-slate-900 border-l-4 border-red-500">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-500">
+               <AlertTriangle className="h-5 w-5" /> Confirm Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-foreground/80">
+              Are you sure you want to cancel the appointment for 
+              <span className="font-bold text-foreground"> {appointmentToDelete?.patientName}</span>?
+              <br />
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setAppointmentToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+                onClick={confirmDelete} 
+                className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-600"
+            >
+              Yes, Delete It
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Tabs value={currentTabFilter} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="today">Today</TabsTrigger>
@@ -200,7 +278,8 @@ const AppointmentsPage = () => {
                       patientName={getPatientName(app.patientId)}
                       index={index}
                       onEdit={handleOpenForm}
-                      onDelete={handleDelete}
+                      // Pass the TRIGGER function, not the confirm function
+                      onDelete={handleDeleteTrigger}
                       onStatusChange={handleStatusChange}
                     />
                   ))}

@@ -1,16 +1,36 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertTriangle } from 'lucide-react'; // Added AlertTriangle
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
 import PatientPageHeader from '@/components/patient/PatientPageHeader';
 import PatientDetailTabs from '@/components/patient/PatientDetailTabs';
-import axios from 'axios'; // FIX: Imported Axios
+import axios from 'axios'; 
 
-// --- API Utility ---
+// --- NEW IMPORTS FOR CONFIRMATION DIALOG ---
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+const parseUniversalDate = (dateInput) => {
+  if (!dateInput) return new Date(0);
+  if (Array.isArray(dateInput)) {
+    const [year, month, day] = dateInput;
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateInput);
+};
 
 const api = {
   getPatient: async (patientId) => {
@@ -18,21 +38,11 @@ const api = {
     if (!response.ok) throw new Error('Failed to fetch patient');
     return response.json();
   },
-  updatePatient: async (patientId, patientData) => {
-    const response = await fetch(`${API_BASE_URL}/patients/${patientId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patientData),
-    });
-    if (!response.ok) throw new Error('Failed to update patient');
-    return response.json();
-  },
   deletePatient: async (patientId) => {
-    const response = await fetch(`${API_BASE_URL}/patients/${patientId}`, {
-      method: 'DELETE',
-    });
+    const response = await fetch(`${API_BASE_URL}/patients/${patientId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Failed to delete patient');
-    return response.status === 204 ? null : response.json();
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   },
   getAppointmentsByPatient: async (patientId) => {
     const response = await fetch(`${API_BASE_URL}/appointments?patientId=${patientId}`);
@@ -44,23 +54,20 @@ const api = {
     if (!response.ok) throw new Error('Failed to fetch dental records');
     return response.json();
   },
-  // NOTE: addDentalRecord is handled directly in the component to support Files
-  updateDentalRecord: async (recordId, recordData) => {
-    const response = await fetch(`${API_BASE_URL}/dentalrecords/${recordId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(recordData),
-    });
-    if (!response.ok) throw new Error('Failed to update dental record');
-    return response.json();
-  },
   deleteDentalRecord: async (recordId) => {
-    const response = await fetch(`${API_BASE_URL}/dentalrecords/${recordId}`, {
-      method: 'DELETE',
-    });
+    const response = await fetch(`${API_BASE_URL}/dentalrecords/${recordId}`, { method: 'DELETE' });
     if (!response.ok) throw new Error('Failed to delete dental record');
-    return response.status === 204 ? null : response.json();
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   },
+  // --- ADDED: Delete Appointment API ---
+  deleteAppointment: async (appointmentId) => {
+    const response = await fetch(`${API_BASE_URL}/appointments/${appointmentId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('Failed to delete appointment');
+    // Handle empty response safely
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  }
 };
 
 const PatientDetailPage = () => {
@@ -71,10 +78,17 @@ const PatientDetailPage = () => {
   const [patient, setPatient] = useState(null);
   const [appointments, setAppointments] = useState([]);
   const [dentalRecords, setDentalRecords] = useState([]);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  
+  // Dialog States
+  const [isPatientDeleteDialogOpen, setIsPatientDeleteDialogOpen] = useState(false);
+  
+  // --- NEW: Record Delete Dialog State ---
+  const [isRecordDeleteDialogOpen, setIsRecordDeleteDialogOpen] = useState(false);
+  const [recordIdToDelete, setRecordIdToDelete] = useState(null);
+
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- Data Fetching from API ---
+  // --- Data Fetching ---
   const fetchPatientData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -100,18 +114,15 @@ const PatientDetailPage = () => {
     fetchPatientData();
   }, [fetchPatientData]);
 
-
   const patientAppointmentHistory = useMemo(() => {
     return appointments
       .filter(app => ['Done'].includes(app.status))
       .map(app => ({
-        id: `app-${app.id}`,
+        id: `app-${app.id}`, 
         date: app.date,
         treatmentName: app.notes || 'Treatment from Appointment',
         notes: app.treatmentNotes || `Completed on ${new Date(app.date).toLocaleDateString()}`,
         cost: parseFloat(app.cost) || 0,
-        prescriptionFile: app.prescriptionFile,
-        prescriptionFileName: app.prescriptionFileName,
         isFromAppointment: true,
       }));
   }, [appointments]);
@@ -120,32 +131,27 @@ const PatientDetailPage = () => {
     const uniqueRecords = new Map();
     patientAppointmentHistory.forEach(record => uniqueRecords.set(record.id, record));
     (dentalRecords || []).forEach(record => {
-      if (!uniqueRecords.has(record.id)) {
         uniqueRecords.set(record.id, record);
-      }
     });
-    return Array.from(uniqueRecords.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
+    return Array.from(uniqueRecords.values()).sort((a, b) => {
+        const dateA = parseUniversalDate(a.date).getTime();
+        const dateB = parseUniversalDate(b.date).getTime();
+        return dateB - dateA; 
+    });
   }, [dentalRecords, patientAppointmentHistory]);
-
 
   const handleDeletePatientConfirm = async () => {
     try {
       await api.deletePatient(patientId);
-      toast({
-        title: "Patient Deleted",
-        description: `${patient?.name}'s record has been permanently removed.`,
-        variant: "destructive",
-      });
+      toast({ title: "Patient Deleted", description: "Record removed.", variant: "destructive" });
       navigate('/patients');
     } catch (error) {
       console.error("Error deleting patient:", error);
-      toast({ title: "Error", description: "Failed to delete patient.", variant: "destructive" });
     } finally {
-      setIsDeleteDialogOpen(false);
+      setIsPatientDeleteDialogOpen(false);
     }
   };
 
-  // FIX: Updated to use Axios and FormData for file uploads
   const handleAddDentalRecord = async (recordData) => {
     try {
       const formData = new FormData();
@@ -153,107 +159,141 @@ const PatientDetailPage = () => {
       formData.append('treatmentName', recordData.treatmentName);
       formData.append('date', recordData.date || new Date().toISOString().split('T')[0]);
       formData.append('notes', recordData.notes || "");
-      
-      // Append files ONLY if they exist (are not null)
-      if (recordData.prescriptionFile) {
-        formData.append('prescriptionFile', recordData.prescriptionFile);
-      }
-      if (recordData.additionalFile) {
-        formData.append('additionalFile', recordData.additionalFile);
-      }
+      if (recordData.prescriptionFile) formData.append('prescriptionFile', recordData.prescriptionFile);
+      if (recordData.additionalFile) formData.append('additionalFile', recordData.additionalFile);
 
-      // Send to Backend
       const response = await axios.post(`${API_BASE_URL}/dentalrecords`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      // Update State
-      setDentalRecords(prev => [response.data, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
-      toast({ title: "Success", description: "Dental Record Added with Files" });
-
+      setDentalRecords(prev => [response.data, ...prev]);
+      toast({ title: "Success", description: "Dental Record Added" });
     } catch (error) {
       console.error("Error adding dental record:", error);
-      toast({ title: "Error", description: "Failed to add record. Check console.", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to add record.", variant: "destructive" });
     }
   };
 
   const handleEditDentalRecord = async (editedRecord) => {
-    if (editedRecord.isFromAppointment) {
-      toast({ title: "Cannot Edit", description: "Records from appointments cannot be edited here.", variant: "destructive" });
-      return;
-    }
     try {
-      const recordToSend = { ...editedRecord, patientId: patientId };
-      const updatedRecord = await api.updateDentalRecord(editedRecord.id, recordToSend);
-      setDentalRecords(prev => prev.map(r => r.id === updatedRecord.id ? updatedRecord : r).sort((a, b) => new Date(b.date) - new Date(a.date)));
-      toast({ title: "Dental Record Updated" });
+      const formData = new FormData();
+      formData.append('patientId', patientId);
+      formData.append('treatmentName', editedRecord.treatmentName);
+      formData.append('date', editedRecord.date || new Date().toISOString().split('T')[0]);
+      formData.append('notes', editedRecord.notes || "");
+      if (editedRecord.prescriptionFile) formData.append('prescriptionFile', editedRecord.prescriptionFile);
+      if (editedRecord.additionalFile) formData.append('additionalFile', editedRecord.additionalFile);
+
+      const recordIdStr = String(editedRecord.id);
+      
+      if (recordIdStr.startsWith('app-')) {
+         const response = await axios.post(`${API_BASE_URL}/dentalrecords`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+         });
+         setDentalRecords(prev => [response.data, ...prev]);
+         toast({ title: "Record Created", description: "Converted to permanent record." });
+      } else {
+         const response = await axios.put(`${API_BASE_URL}/dentalrecords/${editedRecord.id}`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+         });
+         setDentalRecords(prev => prev.map(r => r.id === response.data.id ? response.data : r));
+         toast({ title: "Record Updated", description: "Changes saved." });
+      }
     } catch (error) {
       console.error("Error editing dental record:", error);
-      toast({ title: "Error", description: "Failed to update dental record.", variant: "destructive" });
+      toast({ title: "Update Failed", description: "Could not save changes.", variant: "destructive" });
     }
   };
 
-  const handleDeleteDentalRecord = async (recordId) => {
-    const recordToDelete = combinedDentalRecords.find(r => r.id === recordId);
-    if (recordToDelete && recordToDelete.isFromAppointment) {
-      toast({ title: "Cannot Delete", description: "Records from appointments cannot be deleted from here.", variant: "destructive" });
-      return;
-    }
+  // --- STEP 1: Trigger Dialog ---
+  const handleDeleteRecordClick = (recordId) => {
+    setRecordIdToDelete(recordId);
+    setIsRecordDeleteDialogOpen(true);
+  };
+
+  // --- STEP 2: Confirm Delete ---
+  const confirmDeleteRecord = async () => {
+    if (!recordIdToDelete) return;
+
     try {
-      await api.deleteDentalRecord(recordId);
-      setDentalRecords(prev => prev.filter(r => r.id !== recordId));
-      toast({ title: "Record Deleted" });
+      const idStr = String(recordIdToDelete);
+
+      if (idStr.startsWith('app-')) {
+        // --- CASE 1: Delete Appointment ---
+        const realId = idStr.replace('app-', '');
+        await api.deleteAppointment(realId);
+        // Remove from Appointments state
+        setAppointments(prev => prev.filter(a => String(a.id) !== realId));
+        toast({ title: "Appointment Deleted", description: "Removed from history." });
+      } else {
+        // --- CASE 2: Delete Dental Record ---
+        await api.deleteDentalRecord(recordIdToDelete);
+        // Remove from DentalRecords state
+        setDentalRecords(prev => prev.filter(r => r.id !== recordIdToDelete));
+        toast({ title: "Record Deleted", description: "Dental record removed." });
+      }
     } catch (error) {
-      console.error("Error deleting dental record:", error);
-      toast({ title: "Error", description: "Failed to delete dental record.", variant: "destructive" });
+      console.error("Error deleting record:", error);
+      toast({ title: "Error", description: "Failed to delete record.", variant: "destructive" });
+    } finally {
+      setIsRecordDeleteDialogOpen(false);
+      setRecordIdToDelete(null);
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col justify-center items-center h-screen-75"> 
-        <Loader2 className="h-16 w-16 animate-spin text-primary mb-4" />
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="text-xl text-muted-foreground">
-          Loading patient data...
-        </motion.p>
-      </div>
-    );
-  }
-
+  if (isLoading) return <div className="flex justify-center h-64 items-center"><Loader2 className="animate-spin h-10 w-10 text-primary"/></div>;
   if (!patient) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      className="space-y-6 pb-8"
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-8">
       <div className="flex items-center justify-start mb-2">
-        <Button variant="outline" onClick={() => navigate(-1)} className="group dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-700">
-          <ArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform" />
-          Back
+        <Button variant="outline" onClick={() => navigate(-1)} className="dark:text-slate-300 dark:border-slate-600">
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back
         </Button>
       </div>
 
-      <Card className="shadow-xl border-t-4 border-primary overflow-hidden glassmorphic dark:bg-slate-800/70 dark:border-primary">
+      <Card className="shadow-xl border-t-4 border-primary glassmorphic dark:bg-slate-800/70">
         <PatientPageHeader
           patient={patient}
-          isDeleteDialogOpen={isDeleteDialogOpen}
-          onOpenDeleteDialog={() => setIsDeleteDialogOpen(true)}
-          onCloseDeleteDialog={() => setIsDeleteDialogOpen(false)}
+          isDeleteDialogOpen={isPatientDeleteDialogOpen}
+          onOpenDeleteDialog={() => setIsPatientDeleteDialogOpen(true)}
+          onCloseDeleteDialog={() => setIsPatientDeleteDialogOpen(false)}
           onDeleteConfirm={handleDeletePatientConfirm}
         />
-
         <PatientDetailTabs
           patient={patient}
           patientId={patientId}
           dentalRecords={combinedDentalRecords}
           onAddDentalRecord={handleAddDentalRecord}
           onEditDentalRecord={handleEditDentalRecord}
-          onDeleteDentalRecord={handleDeleteDentalRecord}
+          // Pass the Trigger function, not the Confirm function
+          onDeleteDentalRecord={handleDeleteRecordClick}
         />
       </Card>
+
+      {/* --- CONFIRMATION DIALOG FOR DENTAL RECORDS --- */}
+      <AlertDialog open={isRecordDeleteDialogOpen} onOpenChange={setIsRecordDeleteDialogOpen}>
+        <AlertDialogContent className="glassmorphic dark:bg-slate-900 border-l-4 border-red-500">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-500">
+              <AlertTriangle className="h-5 w-5" /> Delete Record?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-foreground/80">
+              Are you sure you want to delete this record? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setRecordIdToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDeleteRecord} 
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Yes, Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </motion.div>
   );
 };

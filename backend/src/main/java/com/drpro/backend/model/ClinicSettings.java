@@ -8,15 +8,13 @@ import lombok.Data;
 @Table(name = "clinic_settings")
 public class ClinicSettings {
     @Id
-    private Long id = 1L; // Enforce ID=1
+    private Long id = 1L;
 
     private String name;
-    
-    @Column(length = 1000)
-    private String logoUrl;
-    
-    @Column(length = 2000)
+    private String contactInfo;
     private String openingHours;
     
-    private String contactInfo;
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String logoUrl;
 }
