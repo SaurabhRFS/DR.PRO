@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Table as TableIcon, Calculator, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea'; // ✅ IMPORT ADDED
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -31,7 +32,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
 
-// FIX 1: Add fallback to localhost so it works even if .env is missing
+// FIX: Add fallback to localhost so it works even if .env is missing
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const PatientPaymentsTab = ({ patientId }) => {
@@ -67,14 +68,13 @@ const PatientPaymentsTab = ({ patientId }) => {
   const handleCreateTreatment = async () => {
     if (!newTableTitle.trim()) return;
 
-    // FIX 2: Safety check to ensure patientId is present and valid
+    // Safety check
     if (!patientId) {
         toast({ title: "Error", description: "Patient ID is missing", variant: "destructive" });
         return;
     }
 
     try {
-        // FIX 3: Ensure patientId is sent as a number
         const payload = { patientId: Number(patientId), title: newTableTitle, rows: [] };
         const res = await axios.post(`${API_BASE_URL}/treatments`, payload);
         setTreatments([res.data, ...treatments]);
@@ -163,6 +163,12 @@ const PatientPaymentsTab = ({ patientId }) => {
     return rows.reduce((sum, row) => sum + (parseFloat(row.cost) || 0), 0);
   };
 
+  // Helper to auto-resize textarea
+  const adjustTextareaHeight = (e) => {
+    e.target.style.height = 'auto';
+    e.target.style.height = `${e.target.scrollHeight}px`;
+  };
+
   if (loading && treatments.length === 0) {
       return <div className="p-10 flex justify-center"><Loader2 className="animate-spin text-primary"/></div>;
   }
@@ -173,7 +179,7 @@ const PatientPaymentsTab = ({ patientId }) => {
         <div>
             <h2 className="text-xl font-semibold dark:text-slate-100 flex items-center gap-2">
               <TableIcon className="h-5 w-5 text-primary" />
-              Patient's Hisab Kitab
+              Patient Hisab Kitab (Server Synced)
             </h2>
             <p className="text-sm text-muted-foreground">
               Permanent records saved to database.
@@ -231,7 +237,7 @@ const PatientPaymentsTab = ({ patientId }) => {
                 <TableHeader className="bg-slate-50 dark:bg-slate-900/60 border-b">
                     <TableRow>
                     <TableHead className="w-[50px] text-center font-semibold">Sr.</TableHead>
-                    <TableHead className="min-w-[200px] font-semibold">Notes / Description</TableHead>
+                    <TableHead className="min-w-[250px] font-semibold">Notes / Description</TableHead>
                     <TableHead className="w-[120px] font-semibold">Cost (₹)</TableHead>
                     <TableHead className="w-[160px] font-semibold">Status</TableHead>
                     <TableHead className="w-[150px] font-semibold">Date</TableHead>
@@ -249,35 +255,40 @@ const PatientPaymentsTab = ({ patientId }) => {
                         treatment.rows.map((row, index) => (
                         <TableRow key={row.id} className="group hover:bg-muted/30">
                             {/* 1. Sr No */}
-                            <TableCell className="text-center font-medium text-muted-foreground bg-muted/5">
+                            <TableCell className="text-center font-medium text-muted-foreground bg-muted/5 align-top pt-4">
                                 {index + 1}
                             </TableCell>
 
-                            {/* 2. Notes */}
-                            <TableCell className="p-1">
-                                <Input 
+                            {/* 2. Notes (UPDATED TO TEXTAREA) */}
+                            <TableCell className="p-1 align-top">
+                                <Textarea 
                                     value={row.notes || ""} 
-                                    onChange={(e) => updateRowState(treatment.id, row.id, 'notes', e.target.value)}
+                                    onChange={(e) => {
+                                        updateRowState(treatment.id, row.id, 'notes', e.target.value);
+                                        adjustTextareaHeight(e); // Auto-expand
+                                    }}
+                                    onFocus={adjustTextareaHeight} // Ensure correct size on click
                                     onBlur={(e) => saveRowChange(row.id, 'notes', e.target.value)}
-                                    className="h-9 border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50"
+                                    className="min-h-[40px] border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50 resize-none overflow-hidden py-2"
                                     placeholder="Details..."
+                                    rows={1}
                                 />
                             </TableCell>
 
                             {/* 3. Cost */}
-                            <TableCell className="p-1">
+                            <TableCell className="p-1 align-top">
                                 <Input 
                                     type="number"
                                     value={row.cost || ""} 
                                     onChange={(e) => updateRowState(treatment.id, row.id, 'cost', e.target.value)}
                                     onBlur={(e) => saveRowChange(row.id, 'cost', e.target.value)}
-                                    className="h-9 border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50 font-mono"
+                                    className="h-10 border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50 font-mono"
                                     placeholder="0"
                                 />
                             </TableCell>
 
                             {/* 4. Payment Status */}
-                            <TableCell className="p-1">
+                            <TableCell className="p-1 align-top">
                                 <Select 
                                     value={row.status || "Unpaid"} 
                                     onValueChange={(val) => {
@@ -285,7 +296,7 @@ const PatientPaymentsTab = ({ patientId }) => {
                                         saveRowChange(row.id, 'status', val);
                                     }}
                                 >
-                                    <SelectTrigger className={`h-9 border-none shadow-none bg-transparent focus:ring-0 ${
+                                    <SelectTrigger className={`h-10 border-none shadow-none bg-transparent focus:ring-0 ${
                                         row.status === 'Paid' ? 'text-green-600 font-medium' : 
                                         row.status === 'Unpaid' ? 'text-red-500 font-medium' : 'text-yellow-600 font-medium'
                                     }`}>
@@ -300,18 +311,18 @@ const PatientPaymentsTab = ({ patientId }) => {
                             </TableCell>
 
                             {/* 5. Date */}
-                            <TableCell className="p-1">
+                            <TableCell className="p-1 align-top">
                                 <Input 
                                     type="date"
                                     value={row.date || ""} 
                                     onChange={(e) => updateRowState(treatment.id, row.id, 'date', e.target.value)}
                                     onBlur={(e) => saveRowChange(row.id, 'date', e.target.value)}
-                                    className="h-9 border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50 text-sm"
+                                    className="h-10 border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50 text-sm"
                                 />
                             </TableCell>
 
                             {/* Delete */}
-                            <TableCell className="text-center p-1">
+                            <TableCell className="text-center p-1 align-top pt-2">
                                 <Button 
                                     size="icon" 
                                     variant="ghost" 
