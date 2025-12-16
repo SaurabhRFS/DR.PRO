@@ -3,6 +3,7 @@ package com.drpro.backend.dto;
 import lombok.Data;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 @Data
 public class AppointmentDTO {
@@ -15,7 +16,9 @@ public class AppointmentDTO {
     private Double cost;
     private String status;
     
-    // --- ADDED ---
     private String prescriptionUrl;
     private String additionalFileUrl;
+
+    // --- Added this field ---
+    private List<String> fileUrls;
 }

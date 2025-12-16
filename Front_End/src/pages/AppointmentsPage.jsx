@@ -48,6 +48,8 @@ const prepareForApi = (appointment) => {
   return payload;
 };
 
+// ================= UPDATED FORM DATA FUNCTION =================
+
 const createFormData = (data) => {
   const formData = new FormData();
   if (data.patientId) formData.append('patientId', data.patientId);
@@ -57,13 +59,22 @@ const createFormData = (data) => {
   formData.append('cost', data.cost || 0);
   formData.append('status', data.status || "Scheduled");
 
-  if (data.prescriptionFile) formData.append('prescriptionFile', data.prescriptionFile);
-  if (data.additionalFile) formData.append('additionalFile', data.additionalFile);
+  // Keep sending prescription file (legacy support/specific field)
+  if (data.prescriptionFile) {
+      formData.append('prescriptionFile', data.prescriptionFile);
+  }
+
+  // --- CHANGED: Append all additional files to 'files' key ---
+  if (data.additionalFiles && data.additionalFiles.length > 0) {
+      data.additionalFiles.forEach(file => {
+          formData.append('files', file); // 'files' matches Backend @RequestParam
+      });
+  }
 
   return formData;
 };
 
-// ================= PAGE =================
+// ================= PAGE COMPONENT =================
 
 const AppointmentsPage = () => {
   const [appointments, setAppointments] = useState([]);
@@ -188,7 +199,7 @@ const AppointmentsPage = () => {
     }
   };
 
-  // ================= STATUS CHANGE (FIX ADDED HERE) =================
+  // ================= STATUS CHANGE =================
 
   const handleStatusChange = async (appointment, newStatus) => {
     try {
@@ -301,7 +312,6 @@ const AppointmentsPage = () => {
                     index={i}
                     onEdit={(a)=>{ setEditingAppointment(a); setIsFormOpen(true); }}
                     onDelete={(a)=>{ setAppointmentToDelete(a); setIsDeleteDialogOpen(true); }}
-                    /* ✅ FIX: Passed the status change handler */
                     onStatusChange={handleStatusChange} 
                   />
                 ))}

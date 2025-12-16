@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import AppointmentCard from '@/components/appointments/AppointmentCard'; // IMPORTED CARD
+import AppointmentCard from '@/components/appointments/AppointmentCard'; 
 import './FinanceCalendar.css';
 
 const FinanceCalendar = ({ 
@@ -12,7 +12,6 @@ const FinanceCalendar = ({
     expenseEntries, 
     appointments, 
     onDateClick,
-    // New props for functionality
     onAppointmentEdit,
     onAppointmentDelete,
     onAppointmentStatusChange
@@ -98,9 +97,12 @@ const FinanceCalendar = ({
             <CardTitle className="text-lg font-semibold text-foreground dark:text-slate-200">
               {date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </CardTitle>
+            
+            {/* --- UPDATED: Shows only Appointment Count --- */}
             <Badge variant="outline" className="ml-2">
-                {selectedDayData.appointments.length + selectedDayData.revenue.length + selectedDayData.expenses.length} Events
+                {selectedDayData.appointments.length} {selectedDayData.appointments.length === 1 ? 'Appointment' : 'Appointments'}
             </Badge>
+
           </div>
         </CardHeader>
         
@@ -121,7 +123,7 @@ const FinanceCalendar = ({
           ) : (
             <div className="space-y-4">
               
-              {/* 1. APPOINTMENTS - NOW USING AppointmentCard */}
+              {/* 1. APPOINTMENTS */}
               {selectedDayData.appointments.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Appointments</h4>
@@ -131,7 +133,6 @@ const FinanceCalendar = ({
                         appointment={app}
                         patientName={app.patientName || `Patient #${app.patientId}`}
                         index={index}
-                        // Pass handlers down to enable functionality
                         onEdit={onAppointmentEdit}
                         onDelete={onAppointmentDelete}
                         onStatusChange={onAppointmentStatusChange}

@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-// Added 'FileText' and 'Image' to imports for better UI indication if needed
 import { CalendarDays, Clock, Briefcase as BriefcaseMedical, DollarSign, Edit, Trash2, MoreHorizontal, CheckCircle, XCircle, AlertCircle, FileText, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +24,12 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
     }
   };
 
+  // Combine legacy single file and new multiple files for display
+  const extraImages = [
+      ...(appointment.fileUrls || []),
+      appointment.additionalFileUrl
+  ].filter(Boolean);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -32,6 +37,7 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
       transition={{ duration: 0.3, delay: index * 0.05 }}
     >
       <Card className="hover:shadow-lg transition-shadow border-l-4 h-full flex flex-col" style={{ borderColor: cardBorderColor() }}>
+        {/* Header - NO CHANGE */}
         <CardHeader className="flex flex-row justify-between items-start p-4 pb-2">
           <div>
             <CardTitle className="text-lg hover:text-primary">
@@ -94,9 +100,11 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
             </div>
           )}
 
-          {/* --- BUG FIX: Added Image Previews Section --- */}
-          {(appointment.prescriptionUrl || appointment.additionalFileUrl) && (
-            <div className="col-span-2 sm:col-span-3 mt-3 pt-3 border-t border-dashed flex gap-3">
+          {/* --- Images Section (Updated for Multiple) --- */}
+          {(appointment.prescriptionUrl || extraImages.length > 0) && (
+            <div className="col-span-2 sm:col-span-3 mt-3 pt-3 border-t border-dashed flex flex-wrap gap-3">
+              
+              {/* Prescription (Single - specific icon) */}
               {appointment.prescriptionUrl && (
                 <a href={appointment.prescriptionUrl} target="_blank" rel="noopener noreferrer" className="group relative block">
                    <div className="h-14 w-14 rounded-md overflow-hidden border bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
@@ -106,30 +114,29 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
                         className="h-full w-full object-cover group-hover:opacity-80 transition-opacity"
                         onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} 
                       />
-                      <FileText className="h-6 w-6 text-muted-foreground hidden" /> {/* Fallback icon */}
+                      <FileText className="h-6 w-6 text-muted-foreground hidden" />
                    </div>
                    <span className="text-[10px] text-muted-foreground mt-1 block text-center truncate w-14">Rx</span>
                 </a>
               )}
               
-              {appointment.additionalFileUrl && (
-                <a href={appointment.additionalFileUrl} target="_blank" rel="noopener noreferrer" className="group relative block">
+              {/* Extra Images (Multiple) */}
+              {extraImages.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="group relative block">
                    <div className="h-14 w-14 rounded-md overflow-hidden border bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
                       <img 
-                        src={appointment.additionalFileUrl} 
+                        src={url} 
                         alt="Extra" 
                         className="h-full w-full object-cover group-hover:opacity-80 transition-opacity"
                         onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
                       />
-                      <ImageIcon className="h-6 w-6 text-muted-foreground hidden" /> {/* Fallback icon */}
+                      <ImageIcon className="h-6 w-6 text-muted-foreground hidden" />
                    </div>
-                   <span className="text-[10px] text-muted-foreground mt-1 block text-center truncate w-14">Image</span>
+                   <span className="text-[10px] text-muted-foreground mt-1 block text-center truncate w-14">Img {i+1}</span>
                 </a>
-              )}
+              ))}
             </div>
           )}
-          {/* ------------------------------------------- */}
-
         </CardContent>
       </Card>
     </motion.div>

@@ -30,7 +30,8 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     cost: '',
     status: 'Scheduled',
     prescriptionFile: null, prescriptionPreview: null,
-    additionalFile: null, additionalPreview: null
+    // CHANGED: Logic for multiple files in the second box
+    additionalFiles: [], additionalPreviews: [] 
   }), []);
 
   const [formData, setFormData] = useState(initialFormData);
@@ -51,6 +52,12 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
 
   useEffect(() => {
     if (appointment) {
+      // Collect existing images for preview
+      const existingImages = [
+        ...(appointment.fileUrls || []),
+        appointment.additionalFileUrl
+      ].filter(Boolean);
+
       setFormData({
         patientId: appointment.patientId || '',
         date: appointment.date || initialFormData.date,
@@ -59,9 +66,12 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
         cost: appointment.cost || '',
         status: appointment.status || 'Scheduled',
         prescriptionPreview: appointment.prescriptionUrl || null,
-        additionalPreview: appointment.additionalFileUrl || null,
+        
+        // Show existing images in the preview list
+        additionalPreviews: existingImages, 
+        additionalFiles: [], // New files to upload
+        
         prescriptionFile: null, 
-        additionalFile: null
       });
       setSelectedPatientId(appointment.patientId || '');
     } else {
@@ -88,17 +98,27 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
   };
 
   const handleFileChange = (e, field) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({
-           ...prev, 
-           [field]: file, 
-           [field === 'prescriptionFile' ? 'prescriptionPreview' : 'additionalPreview']: reader.result 
-        }));
-      };
-      reader.readAsDataURL(file);
+    if (field === 'prescriptionFile') {
+        // Keep original single file logic for Prescription
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, prescriptionFile: file, prescriptionPreview: reader.result }));
+            };
+            reader.readAsDataURL(file);
+        }
+    } else {
+        // CHANGED: Handle Multiple Files for X-Ray/Images
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            const newPreviews = files.map(f => URL.createObjectURL(f));
+            setFormData(prev => ({
+                ...prev,
+                additionalFiles: [...prev.additionalFiles, ...files],
+                additionalPreviews: [...prev.additionalPreviews, ...newPreviews]
+            }));
+        }
     }
   };
 
@@ -124,19 +144,20 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
       ctx.drawImage(video, 0, 0);
       
       canvas.toBlob((blob) => {
-        // --- FIX: Check if blob is valid before creating URL ---
-        if (!blob) {
-            toast({ title: "Capture Failed", description: "Please try again.", variant: "destructive" });
-            return;
-        }
+        if (!blob) return;
         const file = new File([blob], "capture.png", { type: "image/png" });
         const preview = URL.createObjectURL(blob);
         
-        setFormData(prev => ({
-           ...prev, 
-           [cameraForField]: file,
-           [cameraForField === 'prescriptionFile' ? 'prescriptionPreview' : 'additionalPreview']: preview
-        }));
+        if (cameraForField === 'prescriptionFile') {
+            setFormData(prev => ({ ...prev, prescriptionFile: file, prescriptionPreview: preview }));
+        } else {
+            // Add captured photo to the list
+            setFormData(prev => ({
+                ...prev,
+                additionalFiles: [...prev.additionalFiles, file],
+                additionalPreviews: [...prev.additionalPreviews, preview]
+            }));
+        }
         stopCamera();
       });
     }
@@ -186,6 +207,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            {/* Patient Search - NO CHANGES */}
             <div>
                <Label className="dark:text-slate-300">
                  {selectedPatientId && currentPatientName ? `Patient: ${currentPatientName}` : 'Search Patient'}
@@ -212,6 +234,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                )}
             </div>
 
+            {/* Date/Time - NO CHANGES */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="dark:text-slate-300">Date <span className="text-red-500">*</span></Label>
@@ -223,6 +246,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
               </div>
             </div>
 
+            {/* Notes/Cost - NO CHANGES */}
             <div>
               <Label className="dark:text-slate-300">Notes</Label>
               <Textarea name="notes" placeholder="Details..." value={formData.notes} onChange={handleChange} rows={2} className="dark:bg-slate-700 dark:border-slate-600" />
@@ -232,7 +256,9 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
               <Input name="cost" type="number" step="0.01" value={formData.cost} onChange={handleChange} className="dark:bg-slate-700 dark:border-slate-600" />
             </div>
 
+            {/* Files Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Prescription Box - NO CHANGES */}
                 <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
                    <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><FileText className="h-3 w-3"/> Prescription</Label>
                    <div className="flex gap-2">
@@ -242,13 +268,23 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                    {formData.prescriptionPreview && <img src={formData.prescriptionPreview} className="h-16 rounded border mt-2 bg-white object-contain"/>}
                 </div>
 
+                {/* X-Ray / Image Box - UPDATED TO SUPPORT MULTIPLE */}
                 <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
-                   <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><ImageIcon className="h-3 w-3"/> X-Ray / Image</Label>
+                   <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><ImageIcon className="h-3 w-3"/> X-Rays / Images</Label>
                    <div className="flex gap-2">
-                      <Input type="file" onChange={(e)=>handleFileChange(e,'additionalFile')} className="text-xs dark:bg-slate-700"/>
+                      {/* Added 'multiple' attribute */}
+                      <Input type="file" multiple onChange={(e)=>handleFileChange(e,'additionalFile')} className="text-xs dark:bg-slate-700"/>
                       <Button type="button" size="icon" variant="outline" onClick={()=>startCamera('additionalFile')}><Camera className="h-4 w-4"/></Button>
                    </div>
-                   {formData.additionalPreview && <img src={formData.additionalPreview} className="h-16 rounded border mt-2 bg-white object-contain"/>}
+                   
+                   {/* Display Row of Images */}
+                   {formData.additionalPreviews.length > 0 && (
+                     <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+                        {formData.additionalPreviews.map((src, i) => (
+                           <img key={i} src={src} className="h-16 w-16 min-w-[4rem] rounded border bg-white object-cover"/>
+                        ))}
+                     </div>
+                   )}
                 </div>
             </div>
 

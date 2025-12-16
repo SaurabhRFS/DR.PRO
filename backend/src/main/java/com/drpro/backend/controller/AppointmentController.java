@@ -25,13 +25,11 @@ public class AppointmentController {
     private AppointmentRepository appointmentRepo;
 
     @Autowired
-    private PatientRepository patientRepo; // Added for DTO conversion
+    private PatientRepository patientRepo;
 
     @Autowired
     private CloudinaryService cloudinaryService;
 
-    // 1. Get Appointments (Handles BOTH "All" and "By Patient")
-    // This fixes the 404 error on PatientsListPage
     @GetMapping
     public List<AppointmentDTO> getAppointments(@RequestParam(required = false) Long patientId) {
         List<Appointment> appointments;
@@ -39,11 +37,9 @@ public class AppointmentController {
         if (patientId != null) {
             appointments = appointmentRepo.findByPatientId(patientId);
         } else {
-            // Fetch all if no patientId provided
             appointments = appointmentRepo.findAllByOrderByDateAscTimeAsc();
         }
 
-        // Convert to DTOs to include Patient Name
         Map<Long, String> patientMap = patientRepo.findAll()
                 .stream()
                 .collect(Collectors.toMap(Patient::getId, Patient::getName));
@@ -58,17 +54,18 @@ public class AppointmentController {
             dto.setCost(app.getCost());
             dto.setStatus(app.getStatus());
             
-            // Map Files (Legacy + New List)
             dto.setPrescriptionUrl(app.getPrescriptionUrl());
             dto.setAdditionalFileUrl(app.getAdditionalFileUrl());
-            // Note: If you added a 'fileUrls' field to AppointmentDTO, map it here too.
+            
+            // --- Map the list here ---
+            dto.setFileUrls(app.getFileUrls());
             
             dto.setPatientName(patientMap.getOrDefault(app.getPatientId(), "Unknown"));
             return dto;
         }).collect(Collectors.toList());
     }
 
-    // 2. Create Appointment (Supports up to 5 files)
+    // Keep existing Create/Update/Delete methods exactly as you had them...
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Appointment createAppointment(
             @RequestParam("patientId") Long patientId,
@@ -87,7 +84,6 @@ public class AppointmentController {
         app.setCost(cost);
         app.setStatus(status);
 
-        // Upload Multiple Files
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
                 String url = cloudinaryService.uploadFile(file);
@@ -96,11 +92,9 @@ public class AppointmentController {
                 }
             }
         }
-
         return appointmentRepo.save(app);
     }
 
-    // 3. Update Appointment
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Appointment updateAppointment(
             @PathVariable Long id,
@@ -119,7 +113,6 @@ public class AppointmentController {
         if (cost != null) app.setCost(cost);
         if (status != null) app.setStatus(status);
 
-        // Append new files
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
                 String url = cloudinaryService.uploadFile(file);
@@ -128,11 +121,9 @@ public class AppointmentController {
                 }
             }
         }
-
         return appointmentRepo.save(app);
     }
 
-    // 4. Delete Appointment
     @DeleteMapping("/{id}")
     public void deleteAppointment(@PathVariable Long id) {
         appointmentRepo.deleteById(id);
