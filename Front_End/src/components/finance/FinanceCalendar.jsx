@@ -3,22 +3,29 @@ import Calendar from 'react-calendar';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate
+import { useNavigate } from 'react-router-dom';
+import AppointmentCard from '@/components/appointments/AppointmentCard'; // IMPORTED CARD
 import './FinanceCalendar.css';
 
-const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateClick }) => {
+const FinanceCalendar = ({ 
+    revenueEntries, 
+    expenseEntries, 
+    appointments, 
+    onDateClick,
+    // New props for functionality
+    onAppointmentEdit,
+    onAppointmentDelete,
+    onAppointmentStatusChange
+}) => {
   const [date, setDate] = useState(new Date());
-  const navigate = useNavigate(); // Initialize hook
+  const navigate = useNavigate();
 
-  // Helper to get entries for a specific date
   const getEntriesForDate = (targetDate) => {
-    const dateStr = targetDate.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const dateStr = targetDate.toLocaleDateString('en-CA');
     
-    // Normalize appointments to YYYY-MM-DD
     const daysAppointments = appointments.filter(app => app.date === dateStr);
     
     const daysRevenue = revenueEntries.filter(r => {
-        // Handle both ISO strings and YYYY-MM-DD
         const rDate = new Date(r.date).toLocaleDateString('en-CA');
         return rDate === dateStr;
     });
@@ -38,7 +45,6 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
   const selectedDayData = getEntriesForDate(date);
   const hasData = selectedDayData.appointments.length > 0 || selectedDayData.revenue.length > 0 || selectedDayData.expenses.length > 0;
 
-  // Custom tile content to show dots on calendar
   const tileContent = ({ date: tileDate, view }) => {
     if (view === 'month') {
       const { appointments, revenue, expenses } = getEntriesForDate(tileDate);
@@ -57,44 +63,23 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
     return null;
   };
 
-  // Handler to open patient profile
   const handleProfileClick = (patientId) => {
-    if (patientId) {
-      navigate(`/patients/${patientId}`);
-    }
+    if (patientId) navigate(`/patients/${patientId}`);
   };
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
-      {/* Calendar Section */}
       <Card className="flex-1 dark:bg-slate-800/70 border-none shadow-md">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-semibold text-foreground dark:text-slate-200">Calendar</CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-4 flex justify-center">
             <style>{`
-                .react-calendar { 
-                    width: 100%; 
-                    background: transparent; 
-                    border: none; 
-                    font-family: inherit;
-                }
-                .react-calendar__tile {
-                    padding: 10px 6px;
-                    border-radius: 8px;
-                }
-                .react-calendar__tile:enabled:hover,
-                .react-calendar__tile:enabled:focus {
-                    background-color: var(--muted);
-                }
-                .react-calendar__tile--active {
-                    background: var(--primary) !important;
-                    color: white !important;
-                }
-                .react-calendar__navigation button {
-                    min-width: 44px;
-                    background: none;
-                }
+                .react-calendar { width: 100%; background: transparent; border: none; font-family: inherit; }
+                .react-calendar__tile { padding: 10px 6px; border-radius: 8px; }
+                .react-calendar__tile:enabled:hover, .react-calendar__tile:enabled:focus { background-color: var(--muted); }
+                .react-calendar__tile--active { background: var(--primary) !important; color: white !important; }
+                .react-calendar__navigation button { min-width: 44px; background: none; }
             `}</style>
           <Calendar
             onChange={setDate}
@@ -107,7 +92,6 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
         </CardContent>
       </Card>
 
-      {/* Agenda Section */}
       <Card className="flex-1 lg:max-w-md dark:bg-slate-800/70 border-none shadow-md flex flex-col h-auto lg:h-auto min-h-[400px]">
         <CardHeader className="border-b dark:border-slate-700 pb-3">
           <div className="flex justify-between items-center">
@@ -121,7 +105,6 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
         </CardHeader>
         
         <CardContent className="p-4 flex-1 overflow-y-auto max-h-[500px] lg:max-h-[600px]">
-          {/* Action Button to View Details */}
           {hasData && (
              <button 
                 onClick={() => onDateClick(date)}
@@ -138,30 +121,26 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
           ) : (
             <div className="space-y-4">
               
-              {/* 1. Appointments (Clickable) */}
+              {/* 1. APPOINTMENTS - NOW USING AppointmentCard */}
               {selectedDayData.appointments.length > 0 && (
                 <div className="space-y-2">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Appointments</h4>
-                  {selectedDayData.appointments.map(app => (
-                    <div 
-                        key={app.id} 
-                        onClick={() => handleProfileClick(app.patientId)}
-                        className="p-3 rounded-lg bg-blue-50/50 dark:bg-blue-900/20 border-l-2 border-blue-500 text-sm cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
-                        title="Click to view Patient Profile"
-                    >
-                      <div className="flex justify-between font-medium">
-                         <span className="dark:text-blue-200 underline decoration-dotted decoration-blue-400/50 underline-offset-2">
-                            {app.patientName || `Patient #${app.patientId}`}
-                         </span>
-                         <span className="text-blue-600 dark:text-blue-400">{app.time ? app.time.substring(0, 5) : 'All Day'}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-1 truncate">{app.notes || 'No notes'}</div>
-                    </div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Appointments</h4>
+                  {selectedDayData.appointments.map((app, index) => (
+                    <AppointmentCard 
+                        key={app.id}
+                        appointment={app}
+                        patientName={app.patientName || `Patient #${app.patientId}`}
+                        index={index}
+                        // Pass handlers down to enable functionality
+                        onEdit={onAppointmentEdit}
+                        onDelete={onAppointmentDelete}
+                        onStatusChange={onAppointmentStatusChange}
+                    />
                   ))}
                 </div>
               )}
 
-              {/* 2. Revenue (Clickable if linked to Patient) */}
+              {/* 2. Revenue */}
               {selectedDayData.revenue.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Revenue</h4>
@@ -170,7 +149,6 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
                         key={idx} 
                         onClick={() => rev.patientId && handleProfileClick(rev.patientId)}
                         className={`p-3 rounded-lg bg-green-50/50 dark:bg-green-900/20 border-l-2 border-green-500 text-sm flex justify-between items-center ${rev.patientId ? 'cursor-pointer hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors' : ''}`}
-                        title={rev.patientId ? "Click to view Patient Profile" : "General Revenue"}
                     >
                       <span className={`dark:text-green-200 truncate pr-2 ${rev.patientId ? 'underline decoration-dotted decoration-green-400/50 underline-offset-2' : ''}`}>
                           {rev.description || rev.notes || 'Payment'}
@@ -181,7 +159,7 @@ const FinanceCalendar = ({ revenueEntries, expenseEntries, appointments, onDateC
                 </div>
               )}
 
-              {/* 3. Expenses (Not Clickable - No Profile) */}
+              {/* 3. Expenses */}
               {selectedDayData.expenses.length > 0 && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expenses</h4>

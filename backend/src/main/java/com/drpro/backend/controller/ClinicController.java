@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -38,11 +39,11 @@ public class ClinicController {
         return patientRepo.findById(id).orElseThrow();
     }
 
-    @PostMapping(value="/patients", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/patients", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Patient addPatient(
             @RequestParam("name") String name,
             @RequestParam("phone") String phone,
-            @RequestParam(value="avatar", required=false) MultipartFile avatar
+            @RequestParam(value = "avatar", required = false) MultipartFile avatar
     ) {
         Patient p = new Patient();
         p.setName(name);
@@ -59,12 +60,15 @@ public class ClinicController {
         patientRepo.deleteById(id);
     }
 
-    // ================= APPOINTMENTS (SORTED) =================
+    // ================= APPOINTMENTS =================
 
+    /**
+     * Fetch all appointments sorted by Date ASC, Time ASC
+     * Includes prescription & additional file URLs
+     */
     @GetMapping("/appointments")
     public List<AppointmentDTO> getAppointments() {
 
-        // ✅ SORTED BY DATE ASC, TIME ASC (DB LEVEL)
         List<Appointment> appointments =
                 appointmentRepo.findAllByOrderByDateAscTimeAsc();
 
@@ -80,39 +84,90 @@ public class ClinicController {
             dto.setTime(app.getTime());
             dto.setCost(app.getCost());
             dto.setStatus(app.getStatus());
+            dto.setNotes(app.getNotes());
+
+            // ✅ NEW
+            dto.setPrescriptionUrl(app.getPrescriptionUrl());
+            dto.setAdditionalFileUrl(app.getAdditionalFileUrl());
 
             dto.setPatientName(
                     patientMap.getOrDefault(app.getPatientId(), "Unknown")
-            );
-
-            dto.setNotes(
-                    app.getNotes() != null && !app.getNotes().isEmpty()
-                            ? app.getNotes()
-                            : "General Visit"
             );
             return dto;
         }).collect(Collectors.toList());
     }
 
-    @PostMapping("/appointments")
-    public Appointment createAppointment(@RequestBody Appointment appointment) {
-        Appointment saved = appointmentRepo.save(appointment);
+    /**
+     * CREATE Appointment (Multipart)
+     */
+    @PostMapping(value = "/appointments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Appointment createAppointment(
+            @RequestParam("patientId") Long patientId,
+            @RequestParam("date") String date,
+            @RequestParam(value = "time", required = false) String time,
+            @RequestParam(value = "notes", required = false) String notes,
+            @RequestParam(value = "cost", required = false) Double cost,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
+            @RequestParam(value = "additionalFile", required = false) MultipartFile additionalFile
+    ) {
+        Appointment app = new Appointment();
+        app.setPatientId(patientId);
+        app.setDate(LocalDate.parse(date));
+
+        if (time != null && !time.isEmpty()) {
+            app.setTime(LocalTime.parse(time));
+        }
+
+        app.setNotes(notes);
+        app.setCost(cost);
+        app.setStatus(status != null ? status : "Scheduled");
+
+        if (prescriptionFile != null && !prescriptionFile.isEmpty()) {
+            app.setPrescriptionUrl(cloudinaryService.uploadFile(prescriptionFile));
+        }
+
+        if (additionalFile != null && !additionalFile.isEmpty()) {
+            app.setAdditionalFileUrl(cloudinaryService.uploadFile(additionalFile));
+        }
+
+        Appointment saved = appointmentRepo.save(app);
+
+        // Async Google Calendar Sync
         new Thread(() -> calendarService.createCalendarEvent(saved)).start();
+
         return saved;
     }
 
-    @PutMapping("/appointments/{id}")
+    /**
+     * UPDATE Appointment (Multipart)
+     */
+    @PutMapping(value = "/appointments/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Appointment updateAppointment(
             @PathVariable Long id,
-            @RequestBody Appointment details
+            @RequestParam(value = "date", required = false) String date,
+            @RequestParam(value = "time", required = false) String time,
+            @RequestParam(value = "notes", required = false) String notes,
+            @RequestParam(value = "cost", required = false) Double cost,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
+            @RequestParam(value = "additionalFile", required = false) MultipartFile additionalFile
     ) {
         Appointment app = appointmentRepo.findById(id).orElseThrow();
 
-        app.setDate(details.getDate());
-        app.setTime(details.getTime());
-        app.setNotes(details.getNotes());
-        app.setCost(details.getCost());
-        app.setStatus(details.getStatus());
+        if (date != null) app.setDate(LocalDate.parse(date));
+        if (time != null && !time.isEmpty()) app.setTime(LocalTime.parse(time));
+        if (notes != null) app.setNotes(notes);
+        if (cost != null) app.setCost(cost);
+        if (status != null) app.setStatus(status);
+
+        if (prescriptionFile != null && !prescriptionFile.isEmpty()) {
+            app.setPrescriptionUrl(cloudinaryService.uploadFile(prescriptionFile));
+        }
+
+        if (additionalFile != null && !additionalFile.isEmpty()) {
+            app.setAdditionalFileUrl(cloudinaryService.uploadFile(additionalFile));
+        }
 
         return appointmentRepo.save(app);
     }
@@ -122,33 +177,33 @@ public class ClinicController {
         appointmentRepo.deleteById(id);
     }
 
-    // ================= DENTAL RECORDS (SORTED) =================
+    // ================= DENTAL RECORDS (LEGACY / SUPPLEMENTAL) =================
 
     @GetMapping("/dentalrecords")
     public List<DentalRecord> getDentalRecords(
             @RequestParam(required = false) Long patientId
     ) {
         if (patientId != null) {
-            // ✅ SORTED BY DATE DESC
             return dentalRecordRepo.findByPatientIdOrderByDateDesc(patientId);
         }
-        // ✅ ALL RECORDS SORTED BY DATE DESC
         return dentalRecordRepo.findAllByOrderByDateDesc();
     }
 
-    @PostMapping(value="/dentalrecords", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(value = "/dentalrecords", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public DentalRecord addDentalRecord(
             @RequestParam("patientId") Long patientId,
             @RequestParam("treatmentName") String treatmentName,
-            @RequestParam(value="date", required=false) String date,
-            @RequestParam(value="notes", required=false) String notes,
-            @RequestParam(value="prescriptionFile", required=false) MultipartFile prescriptionFile,
-            @RequestParam(value="additionalFile", required=false) MultipartFile additionalFile
+            @RequestParam(value = "date", required = false) String date,
+            @RequestParam(value = "notes", required = false) String notes,
+            @RequestParam(value = "cost", required = false) Double cost,
+            @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
+            @RequestParam(value = "additionalFile", required = false) MultipartFile additionalFile
     ) {
         DentalRecord record = new DentalRecord();
         record.setPatientId(patientId);
         record.setTreatmentName(treatmentName);
         record.setNotes(notes);
+        record.setCost(cost);
 
         if (date != null && !date.isEmpty()) {
             record.setDate(LocalDate.parse(date));
@@ -167,19 +222,21 @@ public class ClinicController {
         return dentalRecordRepo.save(record);
     }
 
-    @PutMapping(value="/dentalrecords/{id}", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PutMapping(value = "/dentalrecords/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public DentalRecord updateDentalRecord(
             @PathVariable Long id,
             @RequestParam("treatmentName") String treatmentName,
-            @RequestParam(value="date", required=false) String date,
-            @RequestParam(value="notes", required=false) String notes,
-            @RequestParam(value="prescriptionFile", required=false) MultipartFile prescriptionFile,
-            @RequestParam(value="additionalFile", required=false) MultipartFile additionalFile
+            @RequestParam(value = "date", required = false) String date,
+            @RequestParam(value = "notes", required = false) String notes,
+            @RequestParam(value = "cost", required = false) Double cost,
+            @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
+            @RequestParam(value = "additionalFile", required = false) MultipartFile additionalFile
     ) {
         DentalRecord record = dentalRecordRepo.findById(id).orElseThrow();
 
         record.setTreatmentName(treatmentName);
         if (notes != null) record.setNotes(notes);
+        if (cost != null) record.setCost(cost);
         if (date != null && !date.isEmpty()) record.setDate(LocalDate.parse(date));
 
         if (prescriptionFile != null && !prescriptionFile.isEmpty()) {

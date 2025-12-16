@@ -1,78 +1,90 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
+import { Camera, FileText, Image as ImageIcon, X } from 'lucide-react';
 import axios from 'axios';
 
-// Ensure this matches your backend URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) => {
   const { toast } = useToast();
-  const today = new Date().toISOString().split('T')[0];
   
-  // 1. REPLACED useLocalStorage with real state
+  // 1. Data State
   const [patients, setPatients] = useState([]);
-  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
 
-  const initialFormData = {
+  // 2. Camera & File State (RESTORED)
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraForField, setCameraForField] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  // 3. Form State - Memoized to prevent infinite loops
+  const initialFormData = useMemo(() => ({
     patientId: '',
-    date: today,
+    date: new Date().toISOString().split('T')[0],
     time: '',
     notes: '',
     cost: '',
     status: 'Scheduled',
-  };
+    prescriptionFile: null, prescriptionPreview: null,
+    additionalFile: null, additionalPreview: null
+  }), []);
 
   const [formData, setFormData] = useState(initialFormData);
 
-  // 2. NEW: Fetch real patients from Database when dialog opens
+  // --- EFFECT: Fetch Patients (Run Once) ---
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && patients.length === 0) {
       const fetchPatients = async () => {
         try {
           const response = await axios.get(`${API_BASE_URL}/patients`);
           setPatients(response.data || []);
         } catch (error) {
-          console.error("Failed to load patients for search:", error);
-          toast({ title: "Error", description: "Could not load patient list.", variant: "destructive" });
+          console.error("Failed to load patients:", error);
         }
       };
       fetchPatients();
     }
-  }, [isOpen, toast]);
+  }, [isOpen, patients.length]);
 
+  // --- EFFECT: Load Appointment Data ---
   useEffect(() => {
     if (appointment) {
       setFormData({
         patientId: appointment.patientId || '',
-        date: appointment.date || today,
+        date: appointment.date || initialFormData.date,
         time: appointment.time || '',
         notes: appointment.notes || '',
         cost: appointment.cost || '',
         status: appointment.status || 'Scheduled',
+        // Load existing images if available
+        prescriptionPreview: appointment.prescriptionUrl || null,
+        additionalPreview: appointment.additionalFileUrl || null,
+        prescriptionFile: null, 
+        additionalFile: null
       });
-      // Set the selected patient ID directly
       setSelectedPatientId(appointment.patientId || '');
-      
-      // We will fetch the patient name in the next render cycle when 'patients' is populated
     } else {
       setFormData(initialFormData);
       setSelectedPatientId('');
     }
     setSearchTerm(''); 
-  }, [appointment, isOpen, today]);
+  }, [appointment, isOpen, initialFormData]);
 
-  // Sync selected ID with form data
+  // --- EFFECT: Sync Patient ID ---
   useEffect(() => {
-    setFormData(prev => ({ ...prev, patientId: selectedPatientId }));
+    if (selectedPatientId) {
+        setFormData(prev => ({ ...prev, patientId: selectedPatientId }));
+    }
   }, [selectedPatientId]);
 
+  // --- HANDLERS ---
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -83,107 +95,181 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     setSearchTerm(patients.find(p => p.id === patientId)?.name || '');
   };
 
+  // --- FILE & CAMERA LOGIC (RESTORED) ---
+  const handleFileChange = (e, field) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({
+           ...prev, 
+           [field]: file, 
+           [field === 'prescriptionFile' ? 'prescriptionPreview' : 'additionalPreview']: reader.result 
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const startCamera = async (field) => {
+    setCameraForField(field);
+    setIsCameraOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = stream; }, 100);
+    } catch (err) {
+      toast({ title: "Camera Error", description: "Could not access camera.", variant: "destructive" });
+      setIsCameraOpen(false);
+    }
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      
+      canvas.toBlob((blob) => {
+        const file = new File([blob], "capture.png", { type: "image/png" });
+        const preview = URL.createObjectURL(blob);
+        setFormData(prev => ({
+           ...prev, 
+           [cameraForField]: file,
+           [cameraForField === 'prescriptionFile' ? 'prescriptionPreview' : 'additionalPreview']: preview
+        }));
+        stopCamera();
+      });
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+    setIsCameraOpen(false);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.patientId || !formData.date) {
       toast({ title: "Missing Fields", description: "Patient and Date are required.", variant: "destructive" });
       return;
     }
-    onSave({ ...formData, id: appointment ? appointment.id : undefined }); // Let backend handle ID generation
+    onSave({ ...formData, id: appointment ? appointment.id : undefined });
     onOpenChange(false);
   };
 
-  // Filter logic remains the same, but now runs on real data
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     p.phone.includes(searchTerm)
   );
   
-  // Find name for display
   const currentPatientName = patients.find(p => p.id === selectedPatientId)?.name;
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[525px] glassmorphic dark:bg-slate-800">
+    <Dialog open={isOpen} onOpenChange={(open) => { if(!open) stopCamera(); onOpenChange(open); }}>
+      <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto glassmorphic dark:bg-slate-900">
         <DialogHeader>
           <DialogTitle className="text-2xl text-primary dark:text-sky-400">
             {appointment ? 'Edit Appointment' : 'Schedule New Appointment'}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-          <div>
-            <Label htmlFor="patientSearch" className="dark:text-slate-300">
-              {selectedPatientId && currentPatientName 
-                ? `Selected Patient: ${currentPatientName}` 
-                : 'Search Patient (Name/Phone)'}
-            </Label>
-            
-            {/* Search Input - Only show if no patient is locked in */}
-            {!selectedPatientId && (
-              <Input 
-                id="patientSearch" 
-                placeholder="Type name or phone..." 
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="mb-2 dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600"
-              />
-            )}
 
-            {/* Dropdown Results */}
-            {!selectedPatientId && searchTerm && (
-              <div className="max-h-32 overflow-y-auto border rounded-md dark:border-slate-700 bg-white dark:bg-slate-800 z-10 relative">
-                {filteredPatients.length > 0 ? (
-                  filteredPatients.map(p => (
-                    <div 
-                      key={p.id} 
-                      onClick={() => handleSelectPatient(p.id)}
-                      className="p-2 hover:bg-accent dark:hover:bg-slate-700 cursor-pointer border-b last:border-0 dark:border-slate-700"
-                    >
-                      <span className="font-medium">{p.name}</span> <span className="text-xs text-muted-foreground">({p.phone})</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-2 text-sm text-muted-foreground">No patients found.</div>
-                )}
+        {isCameraOpen ? (
+          // --- CAMERA UI ---
+          <div className="space-y-4">
+            <div className="bg-black aspect-video rounded-md overflow-hidden relative">
+               <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"/>
+            </div>
+            <canvas ref={canvasRef} className="hidden"/>
+            <div className="flex gap-2">
+               <Button variant="outline" className="flex-1" onClick={stopCamera}>Cancel</Button>
+               <Button className="flex-1" onClick={capturePhoto}><Camera className="mr-2 h-4 w-4"/> Capture</Button>
+            </div>
+          </div>
+        ) : (
+          // --- FORM UI ---
+          <form onSubmit={handleSubmit} className="space-y-4 py-2">
+            
+            {/* 1. Patient Search */}
+            <div>
+               <Label className="dark:text-slate-300">
+                 {selectedPatientId && currentPatientName ? `Patient: ${currentPatientName}` : 'Search Patient'}
+               </Label>
+               {!selectedPatientId && (
+                 <Input 
+                   placeholder="Name or Phone..." 
+                   value={searchTerm} 
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                   className="mb-2 dark:bg-slate-700 dark:border-slate-600"
+                 />
+               )}
+               {!selectedPatientId && searchTerm && (
+                 <div className="max-h-32 overflow-y-auto border rounded-md dark:border-slate-700 bg-white dark:bg-slate-800 z-10 relative">
+                   {filteredPatients.map(p => (
+                       <div key={p.id} onClick={() => handleSelectPatient(p.id)} className="p-2 hover:bg-accent dark:hover:bg-slate-700 cursor-pointer border-b last:border-0 dark:border-slate-700">
+                         <span className="font-medium">{p.name}</span> <span className="text-xs text-muted-foreground">({p.phone})</span>
+                       </div>
+                   ))}
+                 </div>
+               )}
+               {selectedPatientId && (
+                   <Button type="button" variant="link" size="sm" onClick={() => { setSelectedPatientId(''); setSearchTerm(''); }} className="text-xs text-red-500 p-0 h-auto ml-2">Change</Button>
+               )}
+            </div>
+
+            {/* 2. Date & Time */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="dark:text-slate-300">Date <span className="text-red-500">*</span></Label>
+                <Input name="date" type="date" value={formData.date} onChange={handleChange} required className="dark:bg-slate-700 dark:border-slate-600" />
               </div>
-            )}
-            
-             {/* Change Patient Button */}
-             {selectedPatientId && (
-                <div className="flex justify-between items-center mt-1">
-                   <span className="text-sm text-green-600 font-medium">Patient Linked ✓</span>
-                   <Button type="button" variant="link" size="sm" onClick={() => { setSelectedPatientId(''); setSearchTerm(''); }} className="text-xs text-red-500 h-auto p-0">
-                     Change patient
-                   </Button>
-                </div>
-            )}
-          </div>
+              <div>
+                <Label className="dark:text-slate-300">Time</Label>
+                <Input name="time" type="time" value={formData.time} onChange={handleChange} className="dark:bg-slate-700 dark:border-slate-600" />
+              </div>
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
+            {/* 3. Notes & Cost */}
             <div>
-              <Label htmlFor="date" className="dark:text-slate-300">Date <span className="text-red-500">*</span></Label>
-              <Input id="date" name="date" type="date" value={formData.date} onChange={handleChange} required className="dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600" />
+              <Label className="dark:text-slate-300">Notes</Label>
+              <Textarea name="notes" placeholder="Details..." value={formData.notes} onChange={handleChange} rows={2} className="dark:bg-slate-700 dark:border-slate-600" />
             </div>
             <div>
-              <Label htmlFor="time" className="dark:text-slate-300">Time (Optional)</Label>
-              <Input id="time" name="time" type="time" value={formData.time} onChange={handleChange} className="dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600" />
+              <Label className="dark:text-slate-300">Cost (₹)</Label>
+              <Input name="cost" type="number" step="0.01" value={formData.cost} onChange={handleChange} className="dark:bg-slate-700 dark:border-slate-600" />
             </div>
-          </div>
-          <div>
-            <Label htmlFor="notes" className="dark:text-slate-300">Notes (Service/Treatment)</Label>
-            <Textarea id="notes" name="notes" placeholder="e.g., Dental Check-up, Cleaning..." value={formData.notes} onChange={handleChange} rows={3} className="dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600" />
-          </div>
-          <div>
-            <Label htmlFor="cost" className="dark:text-slate-300">Cost (₹)</Label>
-            <Input id="cost" name="cost" type="number" step="0.01" placeholder="e.g., 75.00" value={formData.cost} onChange={handleChange} className="dark:bg-slate-700 dark:text-slate-50 dark:border-slate-600" />
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" className="dark:text-slate-300 dark:border-slate-600 dark:hover:bg-slate-700">Cancel</Button>
-            </DialogClose>
-            <Button type="submit">{appointment ? 'Save Changes' : 'Schedule Appointment'}</Button>
-          </DialogFooter>
-        </form>
+
+            {/* 4. FILE UPLOADS (RESTORED) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Prescription */}
+                <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
+                   <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><FileText className="h-3 w-3"/> Prescription</Label>
+                   <div className="flex gap-2">
+                      <Input type="file" onChange={(e)=>handleFileChange(e,'prescriptionFile')} className="text-xs dark:bg-slate-700"/>
+                      <Button type="button" size="icon" variant="outline" onClick={()=>startCamera('prescriptionFile')}><Camera className="h-4 w-4"/></Button>
+                   </div>
+                   {formData.prescriptionPreview && <img src={formData.prescriptionPreview} className="h-16 rounded border mt-2 bg-white object-contain"/>}
+                </div>
+
+                {/* X-Ray */}
+                <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
+                   <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><ImageIcon className="h-3 w-3"/> X-Ray / Image</Label>
+                   <div className="flex gap-2">
+                      <Input type="file" onChange={(e)=>handleFileChange(e,'additionalFile')} className="text-xs dark:bg-slate-700"/>
+                      <Button type="button" size="icon" variant="outline" onClick={()=>startCamera('additionalFile')}><Camera className="h-4 w-4"/></Button>
+                   </div>
+                   {formData.additionalPreview && <img src={formData.additionalPreview} className="h-16 rounded border mt-2 bg-white object-contain"/>}
+                </div>
+            </div>
+
+            <DialogFooter>
+              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
+              <Button type="submit">{appointment ? 'Save Changes' : 'Schedule'}</Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

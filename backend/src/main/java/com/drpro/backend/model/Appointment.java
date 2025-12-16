@@ -14,7 +14,6 @@ public class Appointment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Links to the Patient Table
     private Long patientId; 
 
     private LocalDate date;
@@ -25,6 +24,12 @@ public class Appointment {
     
     private Double cost;
     
-    // Values: "Scheduled", "Done", "Cancelled", "Missed"
     private String status; 
+
+    // --- ADDED: File Support for Appointments ---
+    @Column(length = 1000)
+    private String prescriptionUrl;
+    
+    @Column(length = 1000)
+    private String additionalFileUrl;
 }
