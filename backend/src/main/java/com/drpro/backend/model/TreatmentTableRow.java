@@ -3,7 +3,7 @@ package com.drpro.backend.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import com.fasterxml.jackson.annotation.JsonBackReference; // ✅ Import this
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import java.time.LocalDate;
 
 @Entity
@@ -18,10 +18,13 @@ public class TreatmentTableRow {
     private String notes;
     private Double cost;
     private String status;
+
+    // FIX: Map 'date' to 'treatment_date' to avoid SQL reserved keyword conflict
+    @Column(name = "treatment_date") 
     private LocalDate date;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "treatment_table_id")
-    @JsonBackReference // ✅ This stops the loop from the Child side
+    @JsonBackReference
     private TreatmentTable treatmentTable;
 }

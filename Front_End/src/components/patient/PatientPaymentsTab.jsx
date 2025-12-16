@@ -31,7 +31,8 @@ import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// FIX 1: Add fallback to localhost so it works even if .env is missing
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const PatientPaymentsTab = ({ patientId }) => {
   const { toast } = useToast();
@@ -65,14 +66,23 @@ const PatientPaymentsTab = ({ patientId }) => {
   // 1. Create Table
   const handleCreateTreatment = async () => {
     if (!newTableTitle.trim()) return;
+
+    // FIX 2: Safety check to ensure patientId is present and valid
+    if (!patientId) {
+        toast({ title: "Error", description: "Patient ID is missing", variant: "destructive" });
+        return;
+    }
+
     try {
-        const payload = { patientId, title: newTableTitle, rows: [] };
+        // FIX 3: Ensure patientId is sent as a number
+        const payload = { patientId: Number(patientId), title: newTableTitle, rows: [] };
         const res = await axios.post(`${API_BASE_URL}/treatments`, payload);
         setTreatments([res.data, ...treatments]);
         setNewTableTitle("");
         setIsCreateDialogOpen(false);
         toast({ title: "Table Created" });
     } catch (error) {
+        console.error("Create table failed:", error);
         toast({ title: "Error", description: "Failed to create table", variant: "destructive" });
     }
   };
@@ -163,7 +173,7 @@ const PatientPaymentsTab = ({ patientId }) => {
         <div>
             <h2 className="text-xl font-semibold dark:text-slate-100 flex items-center gap-2">
               <TableIcon className="h-5 w-5 text-primary" />
-              Patient Hisab Kitab (Server Synced)
+              Patient's Hisab Kitab
             </h2>
             <p className="text-sm text-muted-foreground">
               Permanent records saved to database.
