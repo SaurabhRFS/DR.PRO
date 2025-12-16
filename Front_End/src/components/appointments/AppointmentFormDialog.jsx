@@ -13,18 +13,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080
 const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) => {
   const { toast } = useToast();
   
-  // 1. Data State
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
 
-  // 2. Camera & File State (RESTORED)
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraForField, setCameraForField] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // 3. Form State - Memoized to prevent infinite loops
   const initialFormData = useMemo(() => ({
     patientId: '',
     date: new Date().toISOString().split('T')[0],
@@ -38,7 +35,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
 
   const [formData, setFormData] = useState(initialFormData);
 
-  // --- EFFECT: Fetch Patients (Run Once) ---
   useEffect(() => {
     if (isOpen && patients.length === 0) {
       const fetchPatients = async () => {
@@ -53,7 +49,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     }
   }, [isOpen, patients.length]);
 
-  // --- EFFECT: Load Appointment Data ---
   useEffect(() => {
     if (appointment) {
       setFormData({
@@ -63,7 +58,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
         notes: appointment.notes || '',
         cost: appointment.cost || '',
         status: appointment.status || 'Scheduled',
-        // Load existing images if available
         prescriptionPreview: appointment.prescriptionUrl || null,
         additionalPreview: appointment.additionalFileUrl || null,
         prescriptionFile: null, 
@@ -77,14 +71,12 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     setSearchTerm(''); 
   }, [appointment, isOpen, initialFormData]);
 
-  // --- EFFECT: Sync Patient ID ---
   useEffect(() => {
     if (selectedPatientId) {
         setFormData(prev => ({ ...prev, patientId: selectedPatientId }));
     }
   }, [selectedPatientId]);
 
-  // --- HANDLERS ---
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -95,7 +87,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     setSearchTerm(patients.find(p => p.id === patientId)?.name || '');
   };
 
-  // --- FILE & CAMERA LOGIC (RESTORED) ---
   const handleFileChange = (e, field) => {
     const file = e.target.files[0];
     if (file) {
@@ -133,8 +124,14 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
       ctx.drawImage(video, 0, 0);
       
       canvas.toBlob((blob) => {
+        // --- FIX: Check if blob is valid before creating URL ---
+        if (!blob) {
+            toast({ title: "Capture Failed", description: "Please try again.", variant: "destructive" });
+            return;
+        }
         const file = new File([blob], "capture.png", { type: "image/png" });
         const preview = URL.createObjectURL(blob);
+        
         setFormData(prev => ({
            ...prev, 
            [cameraForField]: file,
@@ -177,7 +174,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
         </DialogHeader>
 
         {isCameraOpen ? (
-          // --- CAMERA UI ---
           <div className="space-y-4">
             <div className="bg-black aspect-video rounded-md overflow-hidden relative">
                <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover"/>
@@ -189,10 +185,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
             </div>
           </div>
         ) : (
-          // --- FORM UI ---
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
-            
-            {/* 1. Patient Search */}
             <div>
                <Label className="dark:text-slate-300">
                  {selectedPatientId && currentPatientName ? `Patient: ${currentPatientName}` : 'Search Patient'}
@@ -219,7 +212,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                )}
             </div>
 
-            {/* 2. Date & Time */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="dark:text-slate-300">Date <span className="text-red-500">*</span></Label>
@@ -231,7 +223,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
               </div>
             </div>
 
-            {/* 3. Notes & Cost */}
             <div>
               <Label className="dark:text-slate-300">Notes</Label>
               <Textarea name="notes" placeholder="Details..." value={formData.notes} onChange={handleChange} rows={2} className="dark:bg-slate-700 dark:border-slate-600" />
@@ -241,9 +232,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
               <Input name="cost" type="number" step="0.01" value={formData.cost} onChange={handleChange} className="dark:bg-slate-700 dark:border-slate-600" />
             </div>
 
-            {/* 4. FILE UPLOADS (RESTORED) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Prescription */}
                 <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
                    <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><FileText className="h-3 w-3"/> Prescription</Label>
                    <div className="flex gap-2">
@@ -253,7 +242,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                    {formData.prescriptionPreview && <img src={formData.prescriptionPreview} className="h-16 rounded border mt-2 bg-white object-contain"/>}
                 </div>
 
-                {/* X-Ray */}
                 <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
                    <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><ImageIcon className="h-3 w-3"/> X-Ray / Image</Label>
                    <div className="flex gap-2">

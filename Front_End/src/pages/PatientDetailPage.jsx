@@ -19,7 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const parseUniversalDate = (dateInput) => {
   if (!dateInput) return new Date(0);
@@ -102,7 +102,6 @@ const PatientDetailPage = () => {
     fetchPatientData();
   }, [fetchPatientData]);
 
-  // Combine appointments into history
   const patientAppointmentHistory = useMemo(() => {
     return appointments
       .map(app => ({
@@ -121,7 +120,6 @@ const PatientDetailPage = () => {
       }));
   }, [appointments, patient]);
 
-  // Combine real dental records (if any) with appointment history
   const combinedDentalRecords = useMemo(() => {
     const uniqueRecords = new Map();
     patientAppointmentHistory.forEach(record => uniqueRecords.set(record.id, record));
@@ -149,9 +147,10 @@ const PatientDetailPage = () => {
      try {
         const formData = new FormData();
         formData.append('patientId', patientId);
-        formData.append('treatmentName', recordData.treatmentName);
+        // Fallback for treatmentName if using appointment form
+        formData.append('treatmentName', recordData.treatmentName || recordData.notes || "Dental Visit");
         formData.append('date', recordData.date);
-        formData.append('notes', recordData.notes);
+        formData.append('notes', recordData.notes || "");
         formData.append('cost', recordData.cost || 0);
         if (recordData.prescriptionFile) formData.append('prescriptionFile', recordData.prescriptionFile);
         if (recordData.additionalFile) formData.append('additionalFile', recordData.additionalFile);
@@ -189,11 +188,20 @@ const PatientDetailPage = () => {
       } else {
          const formData = new FormData();
          formData.append('patientId', patientId);
-         formData.append('treatmentName', editedRecord.treatmentName);
+         // FIX: Fallback to notes if treatmentName is undefined
+         formData.append('treatmentName', editedRecord.treatmentName || editedRecord.notes || "Dental Visit");
          formData.append('date', editedRecord.date);
-         formData.append('notes', editedRecord.notes);
+         formData.append('notes', editedRecord.notes || "");
          formData.append('cost', editedRecord.cost || 0);
-         const response = await axios.put(`${API_BASE_URL}/dentalrecords/${editedRecord.id}`, formData);
+         
+         if (editedRecord.prescriptionFile) formData.append('prescriptionFile', editedRecord.prescriptionFile);
+         if (editedRecord.additionalFile) formData.append('additionalFile', editedRecord.additionalFile);
+
+         // FIX: Added headers here
+         const response = await axios.put(`${API_BASE_URL}/dentalrecords/${editedRecord.id}`, formData, {
+             headers: { 'Content-Type': 'multipart/form-data' }
+         });
+         
          setDentalRecords(prev => prev.map(r => r.id === response.data.id ? response.data : r));
          toast({ title: "Record Updated" });
       }
@@ -231,7 +239,6 @@ const PatientDetailPage = () => {
     }
   };
 
-  // --- CRITICAL FUNCTION: Handle Status Change ---
   const handleStatusChange = async (appointment, newStatus) => {
     try {
         const realId = String(appointment.id).replace('app-', '');
@@ -271,7 +278,7 @@ const PatientDetailPage = () => {
           onCloseDeleteDialog={() => setIsPatientDeleteDialogOpen(false)}
           onDeleteConfirm={handleDeletePatientConfirm}
         />
-        {/* --- CRITICAL: PASS onStatusChange HERE --- */}
+        
         <PatientDetailTabs
           patient={patient}
           patientId={patientId}

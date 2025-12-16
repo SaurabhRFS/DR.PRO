@@ -1,11 +1,18 @@
-
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { UserCircle, Outdent as Tooth } from 'lucide-react';
 import PatientProfileTab from '@/components/patient/PatientProfileTab';
 import PatientDentalRecordsTab from '@/components/patient/PatientDentalRecordsTab';
 
-const PatientDetailTabs = ({ patient, patientId, dentalRecords, onAddDentalRecord, onEditDentalRecord, onDeleteDentalRecord }) => {
+const PatientDetailTabs = ({ 
+  patient, 
+  patientId, 
+  dentalRecords, 
+  onAddDentalRecord, 
+  onEditDentalRecord, 
+  onDeleteDentalRecord,
+  onStatusChange // <--- ACCEPT THE PROP
+}) => {
   return (
     <Tabs defaultValue="profile" className="w-full">
       <TabsList className="grid w-full grid-cols-2 rounded-none border-b bg-muted/30 dark:bg-slate-900/60 dark:border-slate-700">
@@ -28,6 +35,7 @@ const PatientDetailTabs = ({ patient, patientId, dentalRecords, onAddDentalRecor
           onRecordAdd={onAddDentalRecord}
           onRecordEdit={onEditDentalRecord}
           onRecordDelete={onDeleteDentalRecord}
+          onStatusChange={onStatusChange} // <--- PASS IT DOWN
         />
       </TabsContent>
     </Tabs>

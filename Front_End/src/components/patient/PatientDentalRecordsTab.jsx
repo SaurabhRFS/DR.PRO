@@ -1,9 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import AppointmentCard from '@/components/appointments/AppointmentCard'; 
 import AppointmentFormDialog from '@/components/appointments/AppointmentFormDialog';
 import { PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+const parseUniversalDate = (dateInput) => {
+  if (!dateInput) return new Date();
+  if (Array.isArray(dateInput)) {
+    const [y, m, d] = dateInput;
+    return new Date(y, m - 1, d);
+  }
+  return new Date(dateInput);
+};
 
 const PatientDentalRecordsTab = ({ 
   patientId, 
@@ -11,18 +20,15 @@ const PatientDentalRecordsTab = ({
   onRecordEdit, 
   onRecordAdd, 
   onRecordDelete,
-  onStatusChange // <--- ACCEPT THE PROP
+  onStatusChange 
 }) => {
   const [editingApp, setEditingApp] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   const handleEditClick = (app) => {
-    // Clean the ID if it has the 'app-' prefix
-    const cleanApp = { ...app };
-    if (typeof cleanApp.id === 'string' && cleanApp.id.startsWith('app-')) {
-       cleanApp.id = cleanApp.id.replace('app-', '');
-    }
-    setEditingApp(cleanApp);
+    // DO NOT remove the prefix. The parent component (PatientDetailPage)
+    // needs the 'app-' prefix to know this is an Appointment, not a Dental Record.
+    setEditingApp(app);
     setIsFormOpen(true);
   };
 
@@ -40,8 +46,18 @@ const PatientDentalRecordsTab = ({
     setIsFormOpen(false);
   };
 
-  // Sort: Latest first
-  const sortedHistory = [...dentalRecords].sort((a,b) => new Date(b.date) - new Date(a.date));
+  const groupedRecords = useMemo(() => {
+    const groups = {};
+    const sorted = [...dentalRecords].sort((a,b) => parseUniversalDate(b.date) - parseUniversalDate(a.date));
+    
+    sorted.forEach(app => {
+        const d = parseUniversalDate(app.date);
+        const dateKey = d.toDateString(); 
+        if (!groups[dateKey]) groups[dateKey] = [];
+        groups[dateKey].push(app);
+    });
+    return groups;
+  }, [dentalRecords]);
 
   return (
     <div className="p-4 space-y-6">
@@ -60,20 +76,33 @@ const PatientDentalRecordsTab = ({
          patientId={patientId}
       />
 
-      <div className="grid grid-cols-1 gap-4">
-        {sortedHistory.length === 0 ? (
+      <div className="space-y-6">
+        {Object.keys(groupedRecords).length === 0 ? (
           <p className="text-muted-foreground text-center py-8">No history recorded.</p>
         ) : (
-          sortedHistory.map((app, index) => (
-             <AppointmentCard 
-                key={app.id || index}
-                appointment={app}
-                patientName={app.patientName || "Current Patient"}
-                index={index}
-                onEdit={handleEditClick}
-                onDelete={onRecordDelete}
-                onStatusChange={onStatusChange} // <--- PASS TO CARD (Fixes the Error)
-             />
+          Object.keys(groupedRecords).map(dateKey => (
+             <div key={dateKey} className="space-y-3">
+                <div className="flex items-center gap-4 pt-2">
+                  <div className="h-px flex-1 bg-border dark:bg-slate-700"/>
+                  <span className="text-sm font-medium text-muted-foreground">{dateKey}</span>
+                  <div className="h-px flex-1 bg-border dark:bg-slate-700"/>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                    {groupedRecords[dateKey].map((app, index) => (
+                        <AppointmentCard 
+                            key={app.id || index}
+                            appointment={app}
+                            patientName={app.patientName || "Current Patient"}
+                            index={index}
+                            onEdit={handleEditClick}
+                            /* ✅ FIX: Extract the ID properly here */
+                            onDelete={(record) => onRecordDelete(record.id)} 
+                            onStatusChange={onStatusChange}
+                        />
+                    ))}
+                </div>
+             </div>
           ))
         )}
       </div>
@@ -82,7 +111,6 @@ const PatientDentalRecordsTab = ({
 };
 
 export default PatientDentalRecordsTab;
-
 
 
 
