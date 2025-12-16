@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp, DollarSign, Calendar as CalendarIcon, FileText, User } from 'lucide-react';
+import { ChevronDown, ChevronUp, DollarSign, Calendar as CalendarIcon, FileText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// --- NEW IMPORT ---
+import AppointmentCard from '@/components/appointments/AppointmentCard';
 
 const FinanceDetailsModal = ({
   isOpen,
@@ -12,7 +14,11 @@ const FinanceDetailsModal = ({
   selectedDateForDetails,
   allRevenueSources,
   expenseEntries,
-  appointments
+  appointments,
+  // --- NEW PROPS ---
+  onAppointmentEdit,
+  onAppointmentDelete,
+  onAppointmentStatusChange
 }) => {
   // Helper to format date nicely
   const formatDate = (dateInput) => {
@@ -90,7 +96,6 @@ const FinanceDetailsModal = ({
               </TabsList>
             </div>
 
-            {/* FIX: Used flex-1 and min-h-0 to force scrollbar in available space */}
             <div className="flex-1 overflow-y-auto p-6 min-h-0">
               
               {/* --- Financial Activity Tab --- */}
@@ -119,27 +124,23 @@ const FinanceDetailsModal = ({
                 )}
               </TabsContent>
 
-              {/* --- Appointments Tab --- */}
+              {/* --- Appointments Tab (UPDATED) --- */}
               <TabsContent value="appointments" className="mt-0 space-y-4">
                 {dailyAppointments.length === 0 ? (
                   <EmptyState message="No appointments scheduled for this date." />
                 ) : (
                   <div className="space-y-3 pb-2">
                     {dailyAppointments.map((app, idx) => (
-                      <div key={idx} className="flex flex-col p-4 rounded-lg border bg-card dark:bg-slate-800 shadow-sm relative overflow-hidden">
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-semibold text-foreground">{app.patientName || "Unknown Patient"}</span>
-                          </div>
-                          <Badge variant={app.status === 'Done' ? 'default' : 'secondary'}>{app.status || 'Scheduled'}</Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground pl-6">
-                           <span className="block">Time: {app.time ? app.time.toString() : 'N/A'}</span>
-                           {app.notes && <span className="block mt-1 text-xs italic">"{app.notes}"</span>}
-                        </div>
-                      </div>
+                      // 🔥 REPLACED STATIC DIV WITH INTERACTIVE CARD
+                      <AppointmentCard 
+                        key={app.id || idx}
+                        appointment={app}
+                        patientName={app.patientName || "Unknown Patient"}
+                        index={idx}
+                        onEdit={onAppointmentEdit}
+                        onDelete={onAppointmentDelete}
+                        onStatusChange={onAppointmentStatusChange}
+                      />
                     ))}
                   </div>
                 )}
@@ -193,7 +194,6 @@ const ActivityCard = ({ item, type }) => {
         </div>
       </div>
 
-      {/* Expandable Detail Section */}
       <AnimatePresence>
         {isExpanded && (
           <motion.div 

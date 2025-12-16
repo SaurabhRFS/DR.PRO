@@ -10,6 +10,9 @@ import { useToast } from '@/components/ui/use-toast';
 // --- Appointment Dialog ---
 import AppointmentFormDialog from '@/components/appointments/AppointmentFormDialog';
 
+// --- NEW IMPORT: Details Modal ---
+import FinanceDetailsModal from '@/components/finance/FinanceDetailsModal';
+
 // --- Confirm Dialog ---
 import {
   AlertDialog,
@@ -64,7 +67,7 @@ const CalendarPage = () => {
     appointments: [],
     revenue: [],
     expenses: [],
-    patients: []        // ✅ ADDED
+    patients: []        
   });
 
   // --- Dialog State ---
@@ -73,13 +76,16 @@ const CalendarPage = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [appointmentToDelete, setAppointmentToDelete] = useState(null);
 
+  // --- NEW: Modal State ---
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedDateForDetails, setSelectedDateForDetails] = useState(null);
+
   // ================= FETCH =================
 
   const fetchData = async () => {
     try {
       setLoading(true);
 
-      // ✅ PATIENTS FETCH RESTORED
       const [
         appointmentsRes,
         revenueRes,
@@ -118,6 +124,9 @@ const CalendarPage = () => {
   // ================= HANDLERS =================
 
   const handleOpenForm = (appointment = null) => {
+    // If we are editing from the details modal, close it first so the form is visible
+    if(isDetailsModalOpen) setIsDetailsModalOpen(false); 
+    
     setEditingAppointment(appointment);
     setIsFormOpen(true);
   };
@@ -231,6 +240,12 @@ const CalendarPage = () => {
     }
   };
 
+  // --- NEW: Date Click Handler ---
+  const handleDateClick = (date) => {
+    setSelectedDateForDetails(date);
+    setIsDetailsModalOpen(true);
+  };
+
   // ================= LOADING =================
 
   if (loading) {
@@ -267,6 +282,20 @@ const CalendarPage = () => {
         patients={data.patients}   
       />
 
+      {/* ================= DETAILS MODAL (NEW) ================= */}
+      <FinanceDetailsModal 
+        isOpen={isDetailsModalOpen}
+        onOpenChange={setIsDetailsModalOpen}
+        selectedDateForDetails={selectedDateForDetails}
+        allRevenueSources={data.revenue}
+        expenseEntries={data.expenses}
+        appointments={data.appointments}
+        // PASS ACTIONS DOWN
+        onAppointmentEdit={handleOpenForm}
+        onAppointmentDelete={handleDeleteTrigger}
+        onAppointmentStatusChange={handleStatusChange}
+      />
+
       {/* ================= DELETE CONFIRM ================= */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent className="glassmorphic dark:bg-slate-900 border-l-4 border-red-500">
@@ -295,6 +324,7 @@ const CalendarPage = () => {
         appointments={data.appointments}
         revenueEntries={data.revenue}
         expenseEntries={data.expenses}
+        onDateClick={handleDateClick} // <--- PASS THIS HANDLER
         onAppointmentEdit={handleOpenForm}
         onAppointmentDelete={handleDeleteTrigger}
         onAppointmentStatusChange={handleStatusChange}

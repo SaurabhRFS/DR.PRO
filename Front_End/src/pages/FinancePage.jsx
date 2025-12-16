@@ -1,20 +1,56 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardFooter } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DollarSign, TrendingUp, TrendingDown, PlusCircle, Filter, Eye, Loader2 } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, PlusCircle, Filter, Eye, Loader2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useSearchParams } from 'react-router-dom';
 import FinanceCalendar from '@/components/finance/FinanceCalendar';
 import FinanceChart from '@/components/finance/FinanceChart';
 import FinanceDetailsModal from '@/components/finance/FinanceDetailsModal';
+import axios from 'axios'; 
+
+import AppointmentFormDialog from '@/components/appointments/AppointmentFormDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+// --- HELPERS ---
+const parseUniversalDate = (dateInput) => {
+  if (!dateInput) return new Date();
+  if (Array.isArray(dateInput)) {
+    const [year, month, day] = dateInput;
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateInput);
+};
+
+const prepareForApi = (appointment) => {
+  const payload = { ...appointment };
+  if (payload.date) {
+    const d = parseUniversalDate(payload.date);
+    payload.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  if (payload.time && payload.time.length === 5) {
+    payload.time = payload.time + ":00";
+  }
+  delete payload.patientName;
+  return payload;
+};
 
 const api = {
   getAppointments: async () => {
@@ -73,6 +109,12 @@ const FinancePage = () => {
   const [viewingDetailsFor, setViewingDetailsFor] = useState(null);
   const [selectedDateForDetails, setSelectedDateForDetails] = useState(null);
 
+  // --- APPOINTMENT EDITING STATE ---
+  const [isAppointmentFormOpen, setIsAppointmentFormOpen] = useState(false);
+  const [editingAppointment, setEditingAppointment] = useState(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [appointmentToDelete, setAppointmentToDelete] = useState(null);
+
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -113,6 +155,117 @@ const FinancePage = () => {
     }
   }, [searchParams, setSearchParams]);
 
+  // --- HANDLERS FOR APPOINTMENTS (FIXED WITH NAME LOOKUP) ---
+
+  const handleEditAppointment = (appointment) => {
+    setViewingDetailsFor(null); 
+    setEditingAppointment(appointment);
+    setIsAppointmentFormOpen(true);
+  };
+
+  const handleSaveAppointment = async (appointmentData) => {
+    try {
+      const payload = prepareForApi(appointmentData);
+
+      const formData = new FormData();
+      formData.append('patientId', payload.patientId);
+      formData.append('date', payload.date);
+      if (payload.time) formData.append('time', payload.time);
+      formData.append('notes', payload.notes || "");
+      formData.append('cost', payload.cost || 0);
+      formData.append('status', payload.status || "Scheduled");
+
+      if (appointmentData.prescriptionFile instanceof File) {
+        formData.append('prescriptionFile', appointmentData.prescriptionFile);
+      }
+      if (appointmentData.additionalFile instanceof File) {
+        formData.append('additionalFile', appointmentData.additionalFile);
+      }
+
+      const config = {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      };
+
+      let saved;
+
+      if (editingAppointment) {
+        const res = await axios.put(`${API_BASE_URL}/appointments/${appointmentData.id}`, formData, config);
+        saved = res.data;
+        
+        // 🔥 FIX: Inject Patient Name
+        const p = patients.find(pat => pat.id === saved.patientId);
+        if (p) saved.patientName = p.name;
+
+        setAppointments(prev => prev.map(app => app.id === saved.id ? saved : app));
+        toast({ title: "Appointment Updated" });
+      } else {
+        const res = await axios.post(`${API_BASE_URL}/appointments`, formData, config);
+        saved = res.data;
+
+        // 🔥 FIX: Inject Patient Name
+        const p = patients.find(pat => pat.id === saved.patientId);
+        if (p) saved.patientName = p.name;
+
+        setAppointments(prev => [...prev, saved]);
+        toast({ title: "Appointment Created" });
+      }
+      setIsAppointmentFormOpen(false);
+      setEditingAppointment(null);
+    } catch (error) {
+      console.error("Save failed", error);
+      toast({ title: "Error", description: "Failed to save appointment.", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTrigger = (appointment) => {
+    setAppointmentToDelete(appointment);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!appointmentToDelete) return;
+    try {
+      await axios.delete(`${API_BASE_URL}/appointments/${appointmentToDelete.id}`);
+      setAppointments(prev => prev.filter(a => a.id !== appointmentToDelete.id));
+      toast({ title: "Appointment Deleted" });
+      setViewingDetailsFor(null);
+    } catch (error) {
+      console.error("Delete failed", error);
+      toast({ title: "Error", description: "Could not delete appointment.", variant: "destructive" });
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setAppointmentToDelete(null);
+    }
+  };
+
+  const handleStatusChange = async (appointment, newStatus) => {
+    try {
+      const payload = prepareForApi({ ...appointment, status: newStatus });
+      
+      const formData = new FormData();
+      formData.append('status', newStatus);
+      formData.append('date', payload.date);
+      if(payload.time) formData.append('time', payload.time);
+
+      const res = await axios.put(`${API_BASE_URL}/appointments/${appointment.id}`, formData, {
+         headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const updated = res.data;
+
+      // 🔥 FIX: Inject Patient Name
+      const p = patients.find(pat => pat.id === updated.patientId);
+      if (p) updated.patientName = p.name;
+
+      setAppointments(prev => prev.map(app => app.id === appointment.id ? updated : app));
+      toast({ title: `Marked as ${newStatus}` });
+    } catch (error) {
+      console.error("Status update failed", error);
+      toast({ title: "Error", description: "Failed to update status.", variant: "destructive" });
+    }
+  };
+
+  // --- END NEW HANDLERS ---
+
   const getPatientName = useCallback((patientId) => {
     const patient = patients.find(p => p.id === patientId);
     return patient ? patient.name : `ID: ${patientId}`;
@@ -133,8 +286,7 @@ const FinancePage = () => {
     let endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     switch (filter) {
-      case 'Today':
-        break;
+      case 'Today': break;
       case 'This Week':
         const currentDay = now.getDay();
         const diff = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1); 
@@ -303,6 +455,33 @@ const FinancePage = () => {
         </Card>
       )}
 
+      {/* --- APPOINTMENT DIALOGS --- */}
+      <AppointmentFormDialog 
+        isOpen={isAppointmentFormOpen} 
+        onOpenChange={setIsAppointmentFormOpen} 
+        appointment={editingAppointment} 
+        onSave={handleSaveAppointment}
+        patients={patients}
+      />
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent className="glassmorphic dark:bg-slate-900 border-l-4 border-red-500">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-500">
+              <AlertTriangle className="h-5 w-5" /> Confirm Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-foreground/80">
+              Are you sure you want to cancel this appointment?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700 text-white">Yes, Delete It</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* ---------------------------------- */}
+
       <div className="grid gap-6 md:grid-cols-3">
         {financeSummary.map((item, index) => (
           <motion.div
@@ -407,6 +586,10 @@ const FinancePage = () => {
         totalExpensesForPeriod={totalExpenses}
         netProfitForPeriod={netProfit}
         appointments={appointments}
+        // ✅ PASS ACTIONS DOWN (FIX)
+        onAppointmentEdit={handleEditAppointment}
+        onAppointmentDelete={handleDeleteTrigger}
+        onAppointmentStatusChange={handleStatusChange}
       />
 
       <Card className="dark:bg-slate-800/70">
@@ -433,6 +616,9 @@ const FinancePage = () => {
             expenseEntries={expenseEntries}
             appointments={appointments}
             onDateClick={handleDateClickForDetails}
+            onAppointmentEdit={handleEditAppointment}
+            onAppointmentDelete={handleDeleteTrigger}
+            onAppointmentStatusChange={handleStatusChange}
           />
 
           <FinanceChart 
