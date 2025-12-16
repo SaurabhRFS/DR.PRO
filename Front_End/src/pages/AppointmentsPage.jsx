@@ -67,7 +67,7 @@ const createFormData = (data) => {
 
 const AppointmentsPage = () => {
   const [appointments, setAppointments] = useState([]);
-  const [patients, setPatients] = useState([]); // ✅ REQUIRED
+  const [patients, setPatients] = useState([]); 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -89,7 +89,7 @@ const AppointmentsPage = () => {
         axios.get(`${API_BASE_URL}/patients`)
       ]);
       setAppointments(appointmentsRes.data || []);
-      setPatients(patientsRes.data || []); // ✅ ENSURED
+      setPatients(patientsRes.data || []);
     } catch (error) {
       console.error(error);
       toast({ title: "Error", description: "Failed to load appointments.", variant: "destructive" });
@@ -188,15 +188,43 @@ const AppointmentsPage = () => {
     }
   };
 
+  // ================= STATUS CHANGE (FIX ADDED HERE) =================
+
+  const handleStatusChange = async (appointment, newStatus) => {
+    try {
+      // Backend expects Multipart/Form-Data for PUT updates
+      const formData = new FormData();
+      formData.append('status', newStatus);
+
+      await axios.put(
+        `${API_BASE_URL}/appointments/${appointment.id}`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      // Update local state instantly
+      setAppointments(prev => prev.map(app => 
+        app.id === appointment.id ? { ...app, status: newStatus } : app
+      ));
+      
+      toast({ title: `Marked as ${newStatus}` });
+    } catch (error) {
+      console.error("Status update failed", error);
+      toast({ title: "Error", description: "Could not update status.", variant: "destructive" });
+    }
+  };
+
   // ================= DELETE =================
 
   const confirmDelete = async () => {
+    if (!appointmentToDelete) return; // Safety check
     try {
       await axios.delete(`${API_BASE_URL}/appointments/${appointmentToDelete.id}`);
       setAppointments(prev => prev.filter(a => a.id !== appointmentToDelete.id));
       toast({ title: "Appointment Deleted" });
-    } catch {
-      toast({ title: "Error", description: "Delete failed.", variant: "destructive" });
+    } catch (error) {
+        console.error("Delete failed", error);
+        toast({ title: "Error", description: "Delete failed.", variant: "destructive" });
     } finally {
       setIsDeleteDialogOpen(false);
       setAppointmentToDelete(null);
@@ -273,6 +301,8 @@ const AppointmentsPage = () => {
                     index={i}
                     onEdit={(a)=>{ setEditingAppointment(a); setIsFormOpen(true); }}
                     onDelete={(a)=>{ setAppointmentToDelete(a); setIsDeleteDialogOpen(true); }}
+                    /* ✅ FIX: Passed the status change handler */
+                    onStatusChange={handleStatusChange} 
                   />
                 ))}
               </div>
