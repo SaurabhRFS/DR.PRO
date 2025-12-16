@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarDays, Clock, Briefcase as BriefcaseMedical, DollarSign, Edit, Trash2, MoreHorizontal, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+// Added 'FileText' and 'Image' to imports for better UI indication if needed
+import { CalendarDays, Clock, Briefcase as BriefcaseMedical, DollarSign, Edit, Trash2, MoreHorizontal, CheckCircle, XCircle, AlertCircle, FileText, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,10 +18,10 @@ import AppointmentStatusBadge from '@/components/appointments/AppointmentStatusB
 const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusChange, index }) => {
   const cardBorderColor = () => {
     switch (appointment.status) {
-      case 'Done': return 'hsl(var(--accent))'; // Purple/Green
+      case 'Done': return 'hsl(var(--accent))';
       case 'Cancelled':
-      case 'Missed': return 'hsl(var(--destructive))'; // Red
-      default: return 'hsl(var(--primary))'; // Blue
+      case 'Missed': return 'hsl(var(--destructive))';
+      default: return 'hsl(var(--primary))';
     }
   };
 
@@ -30,14 +31,15 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.05 }}
     >
-      <Card className="hover:shadow-lg transition-shadow border-l-4" style={{ borderColor: cardBorderColor() }}>
+      <Card className="hover:shadow-lg transition-shadow border-l-4 h-full flex flex-col" style={{ borderColor: cardBorderColor() }}>
         <CardHeader className="flex flex-row justify-between items-start p-4 pb-2">
           <div>
             <CardTitle className="text-lg hover:text-primary">
               <Link to={`/patients/${appointment.patientId}`}>{patientName}</Link>
             </CardTitle>
             <CardDescription className="text-sm">
-              <BriefcaseMedical className="inline h-4 w-4 mr-1.5 text-muted-foreground" />{appointment.notes || "General Checkup"}
+              <BriefcaseMedical className="inline h-4 w-4 mr-1.5 text-muted-foreground" />
+              {appointment.notes || "General Checkup"}
             </CardDescription>
           </div>
           <DropdownMenu>
@@ -72,7 +74,8 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
             </DropdownMenuContent>
           </DropdownMenu>
         </CardHeader>
-        <CardContent className="p-4 pt-0 grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+
+        <CardContent className="p-4 pt-0 grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm flex-grow">
           <div className="flex items-center">
             <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
             {new Date(appointment.date).toLocaleDateString()}
@@ -90,6 +93,43 @@ const AppointmentCard = ({ appointment, patientName, onEdit, onDelete, onStatusC
               ₹{parseFloat(appointment.cost).toFixed(2)}
             </div>
           )}
+
+          {/* --- BUG FIX: Added Image Previews Section --- */}
+          {(appointment.prescriptionUrl || appointment.additionalFileUrl) && (
+            <div className="col-span-2 sm:col-span-3 mt-3 pt-3 border-t border-dashed flex gap-3">
+              {appointment.prescriptionUrl && (
+                <a href={appointment.prescriptionUrl} target="_blank" rel="noopener noreferrer" className="group relative block">
+                   <div className="h-14 w-14 rounded-md overflow-hidden border bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                      <img 
+                        src={appointment.prescriptionUrl} 
+                        alt="Prescription" 
+                        className="h-full w-full object-cover group-hover:opacity-80 transition-opacity"
+                        onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} 
+                      />
+                      <FileText className="h-6 w-6 text-muted-foreground hidden" /> {/* Fallback icon */}
+                   </div>
+                   <span className="text-[10px] text-muted-foreground mt-1 block text-center truncate w-14">Rx</span>
+                </a>
+              )}
+              
+              {appointment.additionalFileUrl && (
+                <a href={appointment.additionalFileUrl} target="_blank" rel="noopener noreferrer" className="group relative block">
+                   <div className="h-14 w-14 rounded-md overflow-hidden border bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+                      <img 
+                        src={appointment.additionalFileUrl} 
+                        alt="Extra" 
+                        className="h-full w-full object-cover group-hover:opacity-80 transition-opacity"
+                        onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }}
+                      />
+                      <ImageIcon className="h-6 w-6 text-muted-foreground hidden" /> {/* Fallback icon */}
+                   </div>
+                   <span className="text-[10px] text-muted-foreground mt-1 block text-center truncate w-14">Image</span>
+                </a>
+              )}
+            </div>
+          )}
+          {/* ------------------------------------------- */}
+
         </CardContent>
       </Card>
     </motion.div>
