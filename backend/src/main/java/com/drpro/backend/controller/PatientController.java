@@ -2,7 +2,7 @@ package com.drpro.backend.controller;
 
 import com.drpro.backend.model.Patient;
 import com.drpro.backend.repository.PatientRepository;
-import com.drpro.backend.service.CloudinaryService;
+import com.drpro.backend.service.FileStorageService; // CHANGED
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -19,22 +19,19 @@ public class PatientController {
     private PatientRepository patientRepo;
 
     @Autowired
-    private CloudinaryService cloudinaryService;
+    private FileStorageService fileStorageService; // CHANGED
 
-    // 1. Get All Patients
     @GetMapping
     public List<Patient> getAllPatients(@RequestParam(required = false) String query) {
         return patientRepo.findAll();
     }
 
-    // 2. Get Single Patient
     @GetMapping("/{id}")
     public Patient getPatient(@PathVariable Long id) {
         return patientRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Patient not found with id " + id));
     }
 
-    // 3. Create Patient (Fixed to accept Multipart/Form-Data)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Patient createPatient(
             @RequestParam("name") String name,
@@ -53,7 +50,6 @@ public class PatientController {
         p.setName(name);
         p.setPhone(phone);
         p.setGender(gender);
-        
         if (dob != null && !dob.isEmpty()) p.setDob(LocalDate.parse(dob));
         p.setAlternatePhone(alternatePhone);
         p.setEmail(email);
@@ -62,15 +58,15 @@ public class PatientController {
         p.setAllergies(allergies);
         p.setCurrentMedications(currentMedications);
 
+        // --- CHANGED: Use Local Storage ---
         if (avatar != null && !avatar.isEmpty()) {
-            String url = cloudinaryService.uploadFile(avatar);
+            String url = fileStorageService.storeFile(avatar);
             if (url != null) p.setAvatarUrl(url);
         }
 
         return patientRepo.save(p);
     }
 
-    // 4. Update Patient (Fixed to accept Multipart/Form-Data)
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Patient updatePatient(
             @PathVariable Long id,
@@ -91,7 +87,6 @@ public class PatientController {
                     p.setName(name);
                     p.setPhone(phone);
                     p.setGender(gender);
-
                     if (dob != null && !dob.isEmpty()) p.setDob(LocalDate.parse(dob));
                     p.setAlternatePhone(alternatePhone);
                     p.setEmail(email);
@@ -100,9 +95,9 @@ public class PatientController {
                     p.setAllergies(allergies);
                     p.setCurrentMedications(currentMedications);
 
-                    // Only update avatar if a new file is uploaded
+                    // --- CHANGED: Use Local Storage ---
                     if (avatar != null && !avatar.isEmpty()) {
-                        String url = cloudinaryService.uploadFile(avatar);
+                        String url = fileStorageService.storeFile(avatar);
                         if (url != null) p.setAvatarUrl(url);
                     }
 
@@ -111,7 +106,6 @@ public class PatientController {
                 .orElseThrow(() -> new RuntimeException("Patient not found with id " + id));
     }
 
-    // 5. Delete Patient
     @DeleteMapping("/{id}")
     public void deletePatient(@PathVariable Long id) {
         patientRepo.deleteById(id);

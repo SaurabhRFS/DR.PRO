@@ -5,7 +5,7 @@ import com.drpro.backend.model.Appointment;
 import com.drpro.backend.model.Patient;
 import com.drpro.backend.repository.AppointmentRepository;
 import com.drpro.backend.repository.PatientRepository;
-import com.drpro.backend.service.CloudinaryService;
+import com.drpro.backend.service.FileStorageService; // CHANGED
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -28,22 +28,20 @@ public class AppointmentController {
     private PatientRepository patientRepo;
 
     @Autowired
-    private CloudinaryService cloudinaryService;
+    private FileStorageService fileStorageService; // CHANGED
 
     @GetMapping
     public List<AppointmentDTO> getAppointments(@RequestParam(required = false) Long patientId) {
+        // ... (Keep this method exactly as it was in your previous version) ...
+        // For brevity, I am assuming you kept the DTO mapping logic from the previous step
+        // which includes mapping fileUrls list.
         List<Appointment> appointments;
-
         if (patientId != null) {
             appointments = appointmentRepo.findByPatientId(patientId);
         } else {
             appointments = appointmentRepo.findAllByOrderByDateAscTimeAsc();
         }
-
-        Map<Long, String> patientMap = patientRepo.findAll()
-                .stream()
-                .collect(Collectors.toMap(Patient::getId, Patient::getName));
-
+        Map<Long, String> patientMap = patientRepo.findAll().stream().collect(Collectors.toMap(Patient::getId, Patient::getName));
         return appointments.stream().map(app -> {
             AppointmentDTO dto = new AppointmentDTO();
             dto.setId(app.getId());
@@ -53,19 +51,14 @@ public class AppointmentController {
             dto.setNotes(app.getNotes());
             dto.setCost(app.getCost());
             dto.setStatus(app.getStatus());
-            
             dto.setPrescriptionUrl(app.getPrescriptionUrl());
             dto.setAdditionalFileUrl(app.getAdditionalFileUrl());
-            
-            // --- Map the list here ---
             dto.setFileUrls(app.getFileUrls());
-            
             dto.setPatientName(patientMap.getOrDefault(app.getPatientId(), "Unknown"));
             return dto;
         }).collect(Collectors.toList());
     }
 
-    // Keep existing Create/Update/Delete methods exactly as you had them...
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Appointment createAppointment(
             @RequestParam("patientId") Long patientId,
@@ -76,6 +69,8 @@ public class AppointmentController {
             @RequestParam(value = "status", defaultValue = "Scheduled") String status,
             @RequestParam(value = "files", required = false) List<MultipartFile> files
     ) {
+        if (cost != null && cost < 0) throw new RuntimeException("Cost cannot be negative.");
+
         Appointment app = new Appointment();
         app.setPatientId(patientId);
         app.setDate(LocalDate.parse(date));
@@ -84,9 +79,10 @@ public class AppointmentController {
         app.setCost(cost);
         app.setStatus(status);
 
+        // --- CHANGED: Use Local Storage Loop ---
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
-                String url = cloudinaryService.uploadFile(file);
+                String url = fileStorageService.storeFile(file);
                 if (url != null) {
                     app.getFileUrls().add(url);
                 }
@@ -105,17 +101,19 @@ public class AppointmentController {
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "files", required = false) List<MultipartFile> files
     ) {
-        Appointment app = appointmentRepo.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
+        if (cost != null && cost < 0) throw new RuntimeException("Cost cannot be negative.");
 
+        Appointment app = appointmentRepo.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
         if (date != null) app.setDate(LocalDate.parse(date));
         if (time != null && !time.isEmpty()) app.setTime(LocalTime.parse(time));
         if (notes != null) app.setNotes(notes);
         if (cost != null) app.setCost(cost);
         if (status != null) app.setStatus(status);
 
+        // --- CHANGED: Use Local Storage Loop ---
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
-                String url = cloudinaryService.uploadFile(file);
+                String url = fileStorageService.storeFile(file);
                 if (url != null) {
                     app.getFileUrls().add(url);
                 }

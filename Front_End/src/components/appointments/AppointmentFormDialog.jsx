@@ -16,6 +16,9 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
   const [patients, setPatients] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState('');
+  
+  // --- FIX: Loading state for double-submit prevention ---
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraForField, setCameraForField] = useState(null);
@@ -30,29 +33,32 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     cost: '',
     status: 'Scheduled',
     prescriptionFile: null, prescriptionPreview: null,
-    // CHANGED: Logic for multiple files in the second box
     additionalFiles: [], additionalPreviews: [] 
   }), []);
 
   const [formData, setFormData] = useState(initialFormData);
 
   useEffect(() => {
-    if (isOpen && patients.length === 0) {
-      const fetchPatients = async () => {
-        try {
-          const response = await axios.get(`${API_BASE_URL}/patients`);
-          setPatients(response.data || []);
-        } catch (error) {
-          console.error("Failed to load patients:", error);
+    if (isOpen) {
+        // Reset submitting state when dialog opens
+        setIsSubmitting(false);
+        
+        if (patients.length === 0) {
+            const fetchPatients = async () => {
+                try {
+                const response = await axios.get(`${API_BASE_URL}/patients`);
+                setPatients(response.data || []);
+                } catch (error) {
+                console.error("Failed to load patients:", error);
+                }
+            };
+            fetchPatients();
         }
-      };
-      fetchPatients();
     }
   }, [isOpen, patients.length]);
 
   useEffect(() => {
     if (appointment) {
-      // Collect existing images for preview
       const existingImages = [
         ...(appointment.fileUrls || []),
         appointment.additionalFileUrl
@@ -66,11 +72,8 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
         cost: appointment.cost || '',
         status: appointment.status || 'Scheduled',
         prescriptionPreview: appointment.prescriptionUrl || null,
-        
-        // Show existing images in the preview list
         additionalPreviews: existingImages, 
-        additionalFiles: [], // New files to upload
-        
+        additionalFiles: [], 
         prescriptionFile: null, 
       });
       setSelectedPatientId(appointment.patientId || '');
@@ -99,7 +102,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
 
   const handleFileChange = (e, field) => {
     if (field === 'prescriptionFile') {
-        // Keep original single file logic for Prescription
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
@@ -109,7 +111,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
             reader.readAsDataURL(file);
         }
     } else {
-        // CHANGED: Handle Multiple Files for X-Ray/Images
         const files = Array.from(e.target.files);
         if (files.length > 0) {
             const newPreviews = files.map(f => URL.createObjectURL(f));
@@ -151,7 +152,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
         if (cameraForField === 'prescriptionFile') {
             setFormData(prev => ({ ...prev, prescriptionFile: file, prescriptionPreview: preview }));
         } else {
-            // Add captured photo to the list
             setFormData(prev => ({
                 ...prev,
                 additionalFiles: [...prev.additionalFiles, file],
@@ -170,10 +170,18 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    
+    // --- FIX: Prevent double clicks ---
+    if (isSubmitting) return;
+
     if (!formData.patientId || !formData.date) {
       toast({ title: "Missing Fields", description: "Patient and Date are required.", variant: "destructive" });
       return;
     }
+
+    // Lock the button
+    setIsSubmitting(true);
+
     onSave({ ...formData, id: appointment ? appointment.id : undefined });
     onOpenChange(false);
   };
@@ -207,7 +215,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4 py-2">
-            {/* Patient Search - NO CHANGES */}
             <div>
                <Label className="dark:text-slate-300">
                  {selectedPatientId && currentPatientName ? `Patient: ${currentPatientName}` : 'Search Patient'}
@@ -234,7 +241,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                )}
             </div>
 
-            {/* Date/Time - NO CHANGES */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="dark:text-slate-300">Date <span className="text-red-500">*</span></Label>
@@ -246,7 +252,6 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
               </div>
             </div>
 
-            {/* Notes/Cost - NO CHANGES */}
             <div>
               <Label className="dark:text-slate-300">Notes</Label>
               <Textarea name="notes" placeholder="Details..." value={formData.notes} onChange={handleChange} rows={2} className="dark:bg-slate-700 dark:border-slate-600" />
@@ -256,9 +261,7 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
               <Input name="cost" type="number" step="0.01" value={formData.cost} onChange={handleChange} className="dark:bg-slate-700 dark:border-slate-600" />
             </div>
 
-            {/* Files Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Prescription Box - NO CHANGES */}
                 <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
                    <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><FileText className="h-3 w-3"/> Prescription</Label>
                    <div className="flex gap-2">
@@ -268,16 +271,13 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
                    {formData.prescriptionPreview && <img src={formData.prescriptionPreview} className="h-16 rounded border mt-2 bg-white object-contain"/>}
                 </div>
 
-                {/* X-Ray / Image Box - UPDATED TO SUPPORT MULTIPLE */}
                 <div className="space-y-2 p-3 border rounded bg-slate-50 dark:bg-slate-800/50 dark:border-slate-700">
                    <Label className="flex items-center gap-2 text-xs uppercase text-muted-foreground"><ImageIcon className="h-3 w-3"/> X-Rays / Images</Label>
                    <div className="flex gap-2">
-                      {/* Added 'multiple' attribute */}
                       <Input type="file" multiple onChange={(e)=>handleFileChange(e,'additionalFile')} className="text-xs dark:bg-slate-700"/>
                       <Button type="button" size="icon" variant="outline" onClick={()=>startCamera('additionalFile')}><Camera className="h-4 w-4"/></Button>
                    </div>
                    
-                   {/* Display Row of Images */}
                    {formData.additionalPreviews.length > 0 && (
                      <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
                         {formData.additionalPreviews.map((src, i) => (
@@ -289,8 +289,12 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
             </div>
 
             <DialogFooter>
-              <DialogClose asChild><Button type="button" variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit">{appointment ? 'Save Changes' : 'Schedule'}</Button>
+              <DialogClose asChild><Button type="button" variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              
+              {/* --- FIX: Button Disabled State --- */}
+              <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving...' : (appointment ? 'Save Changes' : 'Schedule')}
+              </Button>
             </DialogFooter>
           </form>
         )}
