@@ -185,7 +185,7 @@ export default defineConfig({
 	customLogger: logger,
 	plugins: [react(), addTransformIndexHtml],
 	server: {
-		host: true, // <--- ADD THIS LINE (This exposes the app to your WiFi)
+		host: true, // <--- (This exposes the app to your WiFi)
 		cors: true,
 		headers: {
 			'Cross-Origin-Embedder-Policy': 'credentialless',
