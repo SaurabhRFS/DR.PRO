@@ -13,13 +13,12 @@ import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/uploads")
-@CrossOrigin(origins = "http://localhost:3000")
+// REMOVED specific @CrossOrigin to use the Global Config (allows all IPs)
 public class FileController {
 
     private final Path fileStorageLocation;
 
     public FileController() {
-        // 1. Define the exact same folder path as FileStorageService
         String homeDir = System.getProperty("user.home");
         this.fileStorageLocation = Paths.get(homeDir, "DrPro_Data", "uploads")
                 .toAbsolutePath().normalize();
@@ -28,26 +27,21 @@ public class FileController {
     @GetMapping("/{fileName:.+}")
     public ResponseEntity<Resource> getFile(@PathVariable String fileName) {
         try {
-            // 2. Find the file on disk
             Path filePath = this.fileStorageLocation.resolve(fileName).normalize();
             Resource resource = new UrlResource(filePath.toUri());
 
             if (resource.exists()) {
-                // 3. Determine File Type (Image, PDF, etc.)
                 String contentType = "application/octet-stream";
                 try {
                     contentType = Files.probeContentType(filePath);
                 } catch (Exception ex) {
-                    // Fallback if type cannot be determined
+                    // ignore
                 }
 
-                // 4. Return the file
                 return ResponseEntity.ok()
                         .contentType(MediaType.parseMediaType(contentType))
                         .body(resource);
             } else {
-                // File not found
-                System.err.println("❌ File not found: " + fileName);
                 return ResponseEntity.notFound().build();
             }
         } catch (MalformedURLException e) {

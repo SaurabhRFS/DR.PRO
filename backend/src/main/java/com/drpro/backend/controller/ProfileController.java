@@ -13,7 +13,7 @@ import java.util.Base64;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "http://localhost:5173") // Allow React
+// @CrossOrigin(origins = "http://localhost:5173") // Allow React
 public class ProfileController {
 
     @Autowired

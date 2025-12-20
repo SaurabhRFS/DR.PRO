@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/appointments")
 // Allow BOTH localhost ports (React often switches between 3000 and 5173)
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
+// @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
 public class AppointmentController {
 
     @Autowired

@@ -73,11 +73,11 @@ const FinanceCalendar = ({
           <CardTitle className="text-lg font-semibold text-foreground dark:text-slate-200">Calendar</CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-4 flex justify-center">
+            {/* FIX: Removed conflicting --active rule. Now using FinanceCalendar.css for correct colors. */}
             <style>{`
                 .react-calendar { width: 100%; background: transparent; border: none; font-family: inherit; }
                 .react-calendar__tile { padding: 10px 6px; border-radius: 8px; }
                 .react-calendar__tile:enabled:hover, .react-calendar__tile:enabled:focus { background-color: var(--muted); }
-                .react-calendar__tile--active { background: var(--primary) !important; color: white !important; }
                 .react-calendar__navigation button { min-width: 44px; background: none; }
             `}</style>
           <Calendar
@@ -98,7 +98,6 @@ const FinanceCalendar = ({
               {date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </CardTitle>
             
-            {/* --- UPDATED: Shows only Appointment Count --- */}
             <Badge variant="outline" className="ml-2">
                 {selectedDayData.appointments.length} {selectedDayData.appointments.length === 1 ? 'Appointment' : 'Appointments'}
             </Badge>

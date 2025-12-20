@@ -21,18 +21,11 @@ public class FileStorageService {
     @PostConstruct
     public void init() {
         try {
-            // 1. Determine the user's home directory (Cross-Platform)
-            // Windows: C:\Users\YourName\DrPro_Data\ uploads
-            // Mac/Linux: /Users/YourName/DrPro_Data/uploads
             String homeDir = System.getProperty("user.home");
-            
-            // 2. Define the target folder
             this.fileStorageLocation = Paths.get(homeDir, "DrPro_Data", "uploads")
                     .toAbsolutePath().normalize();
 
-            // 3. Create the directory if it doesn't exist
             Files.createDirectories(this.fileStorageLocation);
-            
             System.out.println("✅ Local Storage Initialized at: " + this.fileStorageLocation);
 
         } catch (Exception ex) {
@@ -50,14 +43,24 @@ public class FileStorageService {
             }
             String fileName = UUID.randomUUID().toString() + fileExtension;
 
-            // 2. Copy file to the target location
+            // 2. Copy file to target
             Path targetLocation = this.fileStorageLocation.resolve(fileName);
             Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
 
-            // 3. Generate the Download URL
-            // This grabs your current IP (e.g. 192.168.1.5) so mobile devices can see it
-            String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
-            return baseUrl + "/uploads/" + fileName;
+            // 3. Generate URL using LAN IP Address (Fix for Mobile)
+            String hostIp = "localhost";
+            try {
+                // Tries to get the actual IP address (e.g., 192.168.1.5)
+                hostIp = InetAddress.getLocalHost().getHostAddress();
+            } catch (Exception e) {
+                System.err.println("⚠️ Could not resolve Local Host IP, falling back to localhost");
+            }
+
+            // FORCE IP ADDRESS instead of localhost
+            // This ensures mobile devices can find the laptop on the network
+            String fileUrl = "http://" + hostIp + ":8080/uploads/" + fileName;
+            
+            return fileUrl;
 
         } catch (IOException ex) {
             throw new RuntimeException("Could not store file. Please try again!", ex);
