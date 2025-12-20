@@ -27,7 +27,8 @@ public class BackupService {
     @Value("${spring.datasource.url}")
     private String dbUrl; 
 
-    @Value("${backup.mysqldump-path}")
+    // Added ':unknown' to provide a default value and prevent startup crash
+    @Value("${backup.mysqldump-path:unknown}")
     private String dumpPath;
 
     private Path backupFolder;

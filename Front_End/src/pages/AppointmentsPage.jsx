@@ -32,48 +32,6 @@ const parseUniversalDate = (dateInput) => {
   return new Date(dateInput);
 };
 
-const prepareForApi = (appointment) => {
-  const payload = { ...appointment };
-
-  if (payload.date) {
-    const d = parseUniversalDate(payload.date);
-    payload.date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  }
-
-  if (payload.time && payload.time.length === 5) {
-    payload.time = payload.time + ":00";
-  }
-
-  delete payload.patientName;
-  return payload;
-};
-
-// ================= UPDATED FORM DATA FUNCTION =================
-
-const createFormData = (data) => {
-  const formData = new FormData();
-  if (data.patientId) formData.append('patientId', data.patientId);
-  formData.append('date', data.date);
-  if (data.time) formData.append('time', data.time);
-  formData.append('notes', data.notes || "");
-  formData.append('cost', data.cost || 0);
-  formData.append('status', data.status || "Scheduled");
-
-  // Keep sending prescription file (legacy support/specific field)
-  if (data.prescriptionFile) {
-      formData.append('prescriptionFile', data.prescriptionFile);
-  }
-
-  // --- CHANGED: Append all additional files to 'files' key ---
-  if (data.additionalFiles && data.additionalFiles.length > 0) {
-      data.additionalFiles.forEach(file => {
-          formData.append('files', file); // 'files' matches Backend @RequestParam
-      });
-  }
-
-  return formData;
-};
-
 // ================= PAGE COMPONENT =================
 
 const AppointmentsPage = () => {
@@ -161,17 +119,22 @@ const AppointmentsPage = () => {
   const getPatientName = (id) =>
     patients.find(p => p.id === id)?.name || 'Unknown Patient';
 
-  // ================= SAVE =================
+  // ================= SAVE (FIXED) =================
 
-  const handleSaveAppointment = async (appointmentData) => {
+  const handleSaveAppointment = async (formData) => {
+    // ⚠️ CRITICAL CHANGE: 
+    // This function now expects 'formData' (from the Child), NOT a plain object.
+    // We do NOT use 'prepareForApi' or 'createFormData' here anymore.
+    
     try {
-      const payload = prepareForApi(appointmentData);
-      const formData = createFormData(payload);
-
+      // Extract ID from FormData to check if it's Edit or New
+      const id = formData.get('id'); 
+      
       let saved;
-      if (editingAppointment) {
+      if (id) {
+        // PUT (Update)
         const res = await axios.put(
-          `${API_BASE_URL}/appointments/${appointmentData.id}`,
+          `${API_BASE_URL}/appointments/${id}`,
           formData,
           { headers: { 'Content-Type': 'multipart/form-data' } }
         );
@@ -181,6 +144,7 @@ const AppointmentsPage = () => {
         );
         toast({ title: "Appointment Updated" });
       } else {
+        // POST (Create)
         const res = await axios.post(
           `${API_BASE_URL}/appointments`,
           formData,
@@ -203,7 +167,6 @@ const AppointmentsPage = () => {
 
   const handleStatusChange = async (appointment, newStatus) => {
     try {
-      // Backend expects Multipart/Form-Data for PUT updates
       const formData = new FormData();
       formData.append('status', newStatus);
 
@@ -213,7 +176,6 @@ const AppointmentsPage = () => {
         { headers: { 'Content-Type': 'multipart/form-data' } }
       );
 
-      // Update local state instantly
       setAppointments(prev => prev.map(app => 
         app.id === appointment.id ? { ...app, status: newStatus } : app
       ));
@@ -228,7 +190,7 @@ const AppointmentsPage = () => {
   // ================= DELETE =================
 
   const confirmDelete = async () => {
-    if (!appointmentToDelete) return; // Safety check
+    if (!appointmentToDelete) return;
     try {
       await axios.delete(`${API_BASE_URL}/appointments/${appointmentToDelete.id}`);
       setAppointments(prev => prev.filter(a => a.id !== appointmentToDelete.id));

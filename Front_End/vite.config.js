@@ -181,21 +181,45 @@ logger.error = (msg, options) => {
 	loggerError(msg, options);
 }
 
+// export default defineConfig({
+// 	customLogger: logger,
+// 	plugins: [react(), addTransformIndexHtml],
+// 	server: {
+// 		host: true, // <--- (This exposes the app to your WiFi)
+// 		cors: true,
+// 		headers: {
+// 			'Cross-Origin-Embedder-Policy': 'credentialless',
+// 		},
+// 		allowedHosts: true,
+// 	},
+// 	resolve: {
+// 		extensions: ['.jsx', '.js', '.tsx', '.ts', '.json', ],
+// 		alias: {
+// 			'@': path.resolve(__dirname, './src'),
+// 		},
+// 	},
+// });
+
 export default defineConfig({
-	customLogger: logger,
-	plugins: [react(), addTransformIndexHtml],
-	server: {
-		host: true, // <--- (This exposes the app to your WiFi)
-		cors: true,
-		headers: {
-			'Cross-Origin-Embedder-Policy': 'credentialless',
-		},
-		allowedHosts: true,
-	},
-	resolve: {
-		extensions: ['.jsx', '.js', '.tsx', '.ts', '.json', ],
-		alias: {
-			'@': path.resolve(__dirname, './src'),
-		},
-	},
-});
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  // 👇 ADD THIS SERVER BLOCK
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/uploads': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
+})

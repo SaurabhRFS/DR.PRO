@@ -5,7 +5,7 @@ import com.drpro.backend.model.Appointment;
 import com.drpro.backend.model.Patient;
 import com.drpro.backend.repository.AppointmentRepository;
 import com.drpro.backend.repository.PatientRepository;
-import com.drpro.backend.service.FileStorageService; // CHANGED
+import com.drpro.backend.service.FileStorageService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +19,8 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/appointments")
+// Allow BOTH localhost ports (React often switches between 3000 and 5173)
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
 public class AppointmentController {
 
     @Autowired
@@ -28,13 +30,10 @@ public class AppointmentController {
     private PatientRepository patientRepo;
 
     @Autowired
-    private FileStorageService fileStorageService; // CHANGED
+    private FileStorageService fileStorageService;
 
     @GetMapping
     public List<AppointmentDTO> getAppointments(@RequestParam(required = false) Long patientId) {
-        // ... (Keep this method exactly as it was in your previous version) ...
-        // For brevity, I am assuming you kept the DTO mapping logic from the previous step
-        // which includes mapping fileUrls list.
         List<Appointment> appointments;
         if (patientId != null) {
             appointments = appointmentRepo.findByPatientId(patientId);
@@ -42,6 +41,7 @@ public class AppointmentController {
             appointments = appointmentRepo.findAllByOrderByDateAscTimeAsc();
         }
         Map<Long, String> patientMap = patientRepo.findAll().stream().collect(Collectors.toMap(Patient::getId, Patient::getName));
+        
         return appointments.stream().map(app -> {
             AppointmentDTO dto = new AppointmentDTO();
             dto.setId(app.getId());
@@ -51,14 +51,20 @@ public class AppointmentController {
             dto.setNotes(app.getNotes());
             dto.setCost(app.getCost());
             dto.setStatus(app.getStatus());
+            
+            // Return the filenames so the Frontend can build the full URL
             dto.setPrescriptionUrl(app.getPrescriptionUrl());
             dto.setAdditionalFileUrl(app.getAdditionalFileUrl());
             dto.setFileUrls(app.getFileUrls());
+            
             dto.setPatientName(patientMap.getOrDefault(app.getPatientId(), "Unknown"));
             return dto;
         }).collect(Collectors.toList());
     }
 
+    // ==========================================
+    // CREATE (POST)
+    // ==========================================
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Appointment createAppointment(
             @RequestParam("patientId") Long patientId,
@@ -67,6 +73,9 @@ public class AppointmentController {
             @RequestParam(value = "notes", required = false) String notes,
             @RequestParam(value = "cost", required = false) Double cost,
             @RequestParam(value = "status", defaultValue = "Scheduled") String status,
+            // 1. CATCH THE PRESCRIPTION FILE
+            @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
+            // 2. CATCH THE X-RAY FILES
             @RequestParam(value = "files", required = false) List<MultipartFile> files
     ) {
         if (cost != null && cost < 0) throw new RuntimeException("Cost cannot be negative.");
@@ -79,18 +88,27 @@ public class AppointmentController {
         app.setCost(cost);
         app.setStatus(status);
 
-        // --- CHANGED: Use Local Storage Loop ---
+        // --- SAVE PRESCRIPTION (Single File) ---
+        if (prescriptionFile != null && !prescriptionFile.isEmpty()) {
+            String fileName = fileStorageService.storeFile(prescriptionFile);
+            app.setPrescriptionUrl(fileName); // Saves just the filename (e.g., "scan.jpg")
+        }
+
+        // --- SAVE X-RAYS (Multiple Files) ---
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
-                String url = fileStorageService.storeFile(file);
-                if (url != null) {
-                    app.getFileUrls().add(url);
+                String fileName = fileStorageService.storeFile(file);
+                if (fileName != null) {
+                    app.getFileUrls().add(fileName);
                 }
             }
         }
         return appointmentRepo.save(app);
     }
 
+    // ==========================================
+    // UPDATE (PUT)
+    // ==========================================
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Appointment updateAppointment(
             @PathVariable Long id,
@@ -99,23 +117,33 @@ public class AppointmentController {
             @RequestParam(value = "notes", required = false) String notes,
             @RequestParam(value = "cost", required = false) Double cost,
             @RequestParam(value = "status", required = false) String status,
+            // 1. CATCH THE PRESCRIPTION FILE
+            @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
+            // 2. CATCH THE X-RAY FILES
             @RequestParam(value = "files", required = false) List<MultipartFile> files
     ) {
         if (cost != null && cost < 0) throw new RuntimeException("Cost cannot be negative.");
 
         Appointment app = appointmentRepo.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
+        
         if (date != null) app.setDate(LocalDate.parse(date));
         if (time != null && !time.isEmpty()) app.setTime(LocalTime.parse(time));
         if (notes != null) app.setNotes(notes);
         if (cost != null) app.setCost(cost);
         if (status != null) app.setStatus(status);
 
-        // --- CHANGED: Use Local Storage Loop ---
+        // --- SAVE PRESCRIPTION (Single File) ---
+        if (prescriptionFile != null && !prescriptionFile.isEmpty()) {
+            String fileName = fileStorageService.storeFile(prescriptionFile);
+            app.setPrescriptionUrl(fileName); // Overwrites old prescription
+        }
+
+        // --- SAVE X-RAYS (Multiple Files) ---
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
-                String url = fileStorageService.storeFile(file);
-                if (url != null) {
-                    app.getFileUrls().add(url);
+                String fileName = fileStorageService.storeFile(file);
+                if (fileName != null) {
+                    app.getFileUrls().add(fileName);
                 }
             }
         }

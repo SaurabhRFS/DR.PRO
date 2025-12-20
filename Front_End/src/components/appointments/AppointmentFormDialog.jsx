@@ -168,10 +168,15 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     setIsCameraOpen(false);
   };
 
+
+
+
+
+
+
   const handleSubmit = (e) => {
     e.preventDefault();
     
-    // --- FIX: Prevent double clicks ---
     if (isSubmitting) return;
 
     if (!formData.patientId || !formData.date) {
@@ -182,9 +187,51 @@ const AppointmentFormDialog = ({ isOpen, onOpenChange, appointment, onSave }) =>
     // Lock the button
     setIsSubmitting(true);
 
-    onSave({ ...formData, id: appointment ? appointment.id : undefined });
+    // =========================================================
+    // ✅ FIX: Use FormData instead of JSON Object
+    // =========================================================
+    const submitData = new FormData();
+
+    // 1. Append standard text fields
+    // (We convert ID to string just to be safe)
+    if (appointment?.id) {
+        submitData.append("id", appointment.id);
+    }
+    submitData.append("patientId", formData.patientId);
+    submitData.append("date", formData.date);
+    submitData.append("time", formData.time || "");
+    submitData.append("notes", formData.notes || "");
+    submitData.append("cost", formData.cost || "0");
+    submitData.append("status", formData.status || "Scheduled");
+
+    // 2. Append Prescription File (Only if a NEW file is selected)
+    // We check 'instanceof File' to make sure we don't send the old URL string
+    if (formData.prescriptionFile instanceof File) {
+        submitData.append("prescriptionFile", formData.prescriptionFile);
+    }
+
+    // 3. Append Additional Files (Loop through the array)
+    if (formData.additionalFiles && formData.additionalFiles.length > 0) {
+        formData.additionalFiles.forEach((file) => {
+            if (file instanceof File) {
+              submitData.append("files", file);
+            }
+        });
+    }
+
+    // 4. Send this 'FormData' object to the parent
+    // The parent's axios call will automatically detect this 
+    // and set the header to 'multipart/form-data'
+    onSave(submitData);
+    
+    // Close modal
     onOpenChange(false);
   };
+
+
+
+
+
 
   const filteredPatients = patients.filter(p => 
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
