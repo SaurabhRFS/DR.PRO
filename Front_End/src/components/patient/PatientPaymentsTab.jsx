@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Table as TableIcon, Calculator, FileText, Loader2 } from 'lucide-react';
+// Added 'Zap' icon for Quick Estimate
+import { Plus, Trash2, Table as TableIcon, Calculator, FileText, Loader2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // ✅ IMPORT ADDED
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
   Table,
@@ -32,7 +33,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
 
-// FIX: Add fallback to localhost so it works even if .env is missing
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
 const PatientPaymentsTab = ({ patientId }) => {
@@ -49,7 +49,9 @@ const PatientPaymentsTab = ({ patientId }) => {
     try {
       setLoading(true);
       const res = await axios.get(`${API_BASE_URL}/treatments?patientId=${patientId}`);
-      setTreatments(res.data || []);
+      // Sort by ID descending (Newest First)
+      const sortedTreatments = (res.data || []).sort((a, b) => b.id - a.id);
+      setTreatments(sortedTreatments);
     } catch (error) {
       console.error("Failed to load treatments", error);
     } finally {
@@ -68,7 +70,6 @@ const PatientPaymentsTab = ({ patientId }) => {
   const handleCreateTreatment = async () => {
     if (!newTableTitle.trim()) return;
 
-    // Safety check
     if (!patientId) {
         toast({ title: "Error", description: "Patient ID is missing", variant: "destructive" });
         return;
@@ -77,7 +78,10 @@ const PatientPaymentsTab = ({ patientId }) => {
     try {
         const payload = { patientId: Number(patientId), title: newTableTitle, rows: [] };
         const res = await axios.post(`${API_BASE_URL}/treatments`, payload);
-        setTreatments([res.data, ...treatments]);
+        
+        // Add new table to TOP
+        setTreatments([res.data, ...treatments]); 
+        
         setNewTableTitle("");
         setIsCreateDialogOpen(false);
         toast({ title: "Table Created" });
@@ -163,10 +167,14 @@ const PatientPaymentsTab = ({ patientId }) => {
     return rows.reduce((sum, row) => sum + (parseFloat(row.cost) || 0), 0);
   };
 
-  // Helper to auto-resize textarea
   const adjustTextareaHeight = (e) => {
     e.target.style.height = 'auto';
     e.target.style.height = `${e.target.scrollHeight}px`;
+  };
+
+  // Placeholder for the future Quick Estimate Logic
+  const handleQuickEstimateClick = (treatmentId) => {
+    toast({ title: "Coming Soon", description: "Quick Estimate popup will open here." });
   };
 
   if (loading && treatments.length === 0) {
@@ -254,20 +262,18 @@ const PatientPaymentsTab = ({ patientId }) => {
                     ) : (
                         treatment.rows.map((row, index) => (
                         <TableRow key={row.id} className="group hover:bg-muted/30">
-                            {/* 1. Sr No */}
                             <TableCell className="text-center font-medium text-muted-foreground bg-muted/5 align-top pt-4">
                                 {index + 1}
                             </TableCell>
 
-                            {/* 2. Notes (UPDATED TO TEXTAREA) */}
                             <TableCell className="p-1 align-top">
                                 <Textarea 
                                     value={row.notes || ""} 
                                     onChange={(e) => {
                                         updateRowState(treatment.id, row.id, 'notes', e.target.value);
-                                        adjustTextareaHeight(e); // Auto-expand
+                                        adjustTextareaHeight(e);
                                     }}
-                                    onFocus={adjustTextareaHeight} // Ensure correct size on click
+                                    onFocus={adjustTextareaHeight}
                                     onBlur={(e) => saveRowChange(row.id, 'notes', e.target.value)}
                                     className="min-h-[40px] border-none bg-transparent shadow-none focus-visible:ring-1 focus-visible:ring-primary/50 resize-none overflow-hidden py-2"
                                     placeholder="Details..."
@@ -275,7 +281,6 @@ const PatientPaymentsTab = ({ patientId }) => {
                                 />
                             </TableCell>
 
-                            {/* 3. Cost */}
                             <TableCell className="p-1 align-top">
                                 <Input 
                                     type="number"
@@ -287,7 +292,6 @@ const PatientPaymentsTab = ({ patientId }) => {
                                 />
                             </TableCell>
 
-                            {/* 4. Payment Status */}
                             <TableCell className="p-1 align-top">
                                 <Select 
                                     value={row.status || "Unpaid"} 
@@ -310,7 +314,6 @@ const PatientPaymentsTab = ({ patientId }) => {
                                 </Select>
                             </TableCell>
 
-                            {/* 5. Date */}
                             <TableCell className="p-1 align-top">
                                 <Input 
                                     type="date"
@@ -321,7 +324,6 @@ const PatientPaymentsTab = ({ patientId }) => {
                                 />
                             </TableCell>
 
-                            {/* Delete */}
                             <TableCell className="text-center p-1 align-top pt-2">
                                 <Button 
                                     size="icon" 
@@ -339,15 +341,29 @@ const PatientPaymentsTab = ({ patientId }) => {
                 </Table>
             </div>
             
-            <div className="p-2 border-t bg-slate-50/50 dark:bg-slate-900/20 dark:border-slate-800">
+            {/* --- ACTION BUTTONS ROW --- */}
+            <div className="p-2 border-t bg-slate-50/50 dark:bg-slate-900/20 dark:border-slate-800 flex gap-2">
+                
+                {/* 1. Standard Add Row */}
                 <Button 
                     variant="ghost" 
                     size="sm" 
-                    className="w-full text-muted-foreground hover:text-primary hover:bg-primary/5 dashed-border"
+                    className="flex-1 text-muted-foreground hover:text-primary hover:bg-primary/5 dashed-border"
                     onClick={() => handleAddRow(treatment.id)}
                 >
                     <Plus className="h-3.5 w-3.5 mr-2" /> Add Row
                 </Button>
+
+                {/* 2. New Quick Estimate Button (UI Only for now) */}
+                <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="flex-1 text-muted-foreground hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 dashed-border"
+                    onClick={() => handleQuickEstimateClick(treatment.id)}
+                >
+                    <Zap className="h-3.5 w-3.5 mr-2" /> Quick Estimate
+                </Button>
+
             </div>
           </CardContent>
         </Card>

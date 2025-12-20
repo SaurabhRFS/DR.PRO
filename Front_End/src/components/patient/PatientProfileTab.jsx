@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { UserCircle, Phone, Mail, MapPin, Calendar, Stethoscope, ShieldAlert, Pill, VenetianMask } from 'lucide-react';
+// Added 'Fingerprint' for the cool ID icon
+import { UserCircle, Phone, MapPin, Calendar, Stethoscope, ShieldAlert, Pill, VenetianMask, Fingerprint } from 'lucide-react';
 
 const DetailItem = ({ icon: Icon, label, value, className = '', isTextArea = false, iconColor = 'text-primary dark:text-sky-400' }) => (
   <motion.div 
@@ -57,7 +57,16 @@ const PatientProfileTab = ({ patient }) => {
           <DetailItem icon={VenetianMask} label="Gender" value={patient.gender} />
           <DetailItem icon={Phone} label="Phone Number" value={patient.phone} />
           {patient.alternatePhone && <DetailItem icon={Phone} label="Alternate Phone" value={patient.alternatePhone} />}
-          <DetailItem icon={Mail} label="Email Address" value={patient.email} className="md:col-span-2"/>
+          
+          {/* UPDATED: Email Address replaced with Patient ID + Cool Fingerprint Icon */}
+          <DetailItem 
+            icon={Fingerprint} 
+            label="Patient ID" 
+            value={patient.email} 
+            className="md:col-span-2"
+            iconColor="text-orange-500" 
+          />
+          
           <DetailItem icon={MapPin} label="Address" value={patient.address} className="md:col-span-2"/>
         </div>
       </section>
