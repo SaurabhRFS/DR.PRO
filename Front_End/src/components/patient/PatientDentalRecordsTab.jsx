@@ -26,8 +26,6 @@ const PatientDentalRecordsTab = ({
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   const handleEditClick = (app) => {
-    // DO NOT remove the prefix. The parent component (PatientDetailPage)
-    // needs the 'app-' prefix to know this is an Appointment, not a Dental Record.
     setEditingApp(app);
     setIsFormOpen(true);
   };
@@ -38,10 +36,10 @@ const PatientDentalRecordsTab = ({
   };
 
   const handleSave = (data) => {
+    // FIX: Just pass the FormData directly. 
+    // The ID is already inside it (handled by AppointmentFormDialog)
     if (editingApp) {
-        // ✅ FIX: Explicitly merge the original ID.
-        // The dialog usually returns only the form fields, so we lose the ID without this.
-        onRecordEdit({ ...data, id: editingApp.id });
+        onRecordEdit(data);
     } else {
         onRecordAdd(data);
     }
@@ -98,7 +96,6 @@ const PatientDentalRecordsTab = ({
                             patientName={app.patientName || "Current Patient"}
                             index={index}
                             onEdit={handleEditClick}
-                            /* ✅ Ensure ID is passed for deletion too */
                             onDelete={(record) => onRecordDelete(record.id)} 
                             onStatusChange={onStatusChange}
                         />
@@ -113,7 +110,6 @@ const PatientDentalRecordsTab = ({
 };
 
 export default PatientDentalRecordsTab;
-
 
 
 

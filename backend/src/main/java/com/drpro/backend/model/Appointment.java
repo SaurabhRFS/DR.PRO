@@ -20,25 +20,26 @@ public class Appointment {
 
     private LocalDate date;
     private LocalTime time;
-    
+
     @Column(length = 1000)
     private String notes;
-    
-    private Double cost;
-    
-    private String status; 
 
-    // --- NEW: Support for multiple files (Up to 5) ---
-    // This creates a separate table to store the list of URLs
-    @ElementCollection
-    @CollectionTable(name = "appointment_files", joinColumns = @JoinColumn(name = "appointment_id"))
-    @Column(name = "file_url", length = 1000)
+    private Double cost;
+    private String status;
+
+    // ✅ NEW: Store multiple file URLs (images, reports, etc.)
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+        name = "appointment_images",
+        joinColumns = @JoinColumn(name = "appointment_id")
+    )
+    @Column(name = "file_name", length = 1000)
     private List<String> fileUrls = new ArrayList<>();
-    
-    // Legacy fields (We keep these so old data doesn't break)
+
+    // ✅ Legacy fields (keep for backward compatibility)
     @Column(length = 1000)
     private String prescriptionUrl;
-    
+
     @Column(length = 1000)
     private String additionalFileUrl;
 }
