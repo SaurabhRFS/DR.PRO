@@ -31,6 +31,31 @@ public class AppointmentController {
     @Autowired
     private FileStorageService fileStorageService;
 
+    /**
+     * Helper method to convert Entity to DTO.
+     * Crucial for ensuring the fileUrls list is serialized correctly as a JSON array.
+     */
+    private AppointmentDTO convertToDTO(Appointment app) {
+        AppointmentDTO dto = new AppointmentDTO();
+        dto.setId(app.getId());
+        dto.setPatientId(app.getPatientId());
+        dto.setDate(app.getDate());
+        dto.setTime(app.getTime());
+        dto.setNotes(app.getNotes());
+        dto.setCost(app.getCost());
+        dto.setStatus(app.getStatus());
+        
+        // Map Legacy fields
+        dto.setPrescriptionUrl(app.getPrescriptionUrl());
+        dto.setAdditionalFileUrl(app.getAdditionalFileUrl());
+        
+        // ✅ CRITICAL FIX: Explicitly copy the list to a new ArrayList.
+        // This forces Hibernate to initialize the collection and prevents serialization issues.
+        dto.setFileUrls(app.getFileUrls() != null ? new ArrayList<>(app.getFileUrls()) : new ArrayList<>());
+        
+        return dto;
+    }
+
     @GetMapping
     public List<AppointmentDTO> getAppointments(@RequestParam(required = false) Long patientId) {
         List<Appointment> appointments;
@@ -39,30 +64,15 @@ public class AppointmentController {
         } else {
             appointments = appointmentRepo.findAllByOrderByDateAscTimeAsc();
         }
-        Map<Long, String> patientMap = patientRepo.findAll().stream().collect(Collectors.toMap(Patient::getId, Patient::getName));
+        
+        // Fetch patient names for mapping
+        Map<Long, String> patientMap = patientRepo.findAll().stream()
+                .collect(Collectors.toMap(Patient::getId, Patient::getName));
         
         return appointments.stream().map(app -> {
-            AppointmentDTO dto = new AppointmentDTO();
-            dto.setId(app.getId());
-            dto.setPatientId(app.getPatientId());
-            dto.setDate(app.getDate());
-            dto.setTime(app.getTime());
-            dto.setNotes(app.getNotes());
-            dto.setCost(app.getCost());
-            dto.setStatus(app.getStatus());
-            
-            // Return BOTH legacy and new file lists
-            dto.setPrescriptionUrl(app.getPrescriptionUrl());
-            dto.setAdditionalFileUrl(app.getAdditionalFileUrl());
-            
-            // Ensure we never return null for the list
-            
-            // Inside AppointmentController.java -> getAppointments method
-            // Change this line:
-            dto.setFileUrls(app.getFileUrls() != null ? new ArrayList<>(app.getFileUrls()) : new ArrayList<>());
+            AppointmentDTO dto = convertToDTO(app);
             dto.setPatientName(patientMap.getOrDefault(app.getPatientId(), "Unknown"));
             return dto;
-            
         }).collect(Collectors.toList());
     }
 
@@ -70,7 +80,7 @@ public class AppointmentController {
     // CREATE (POST)
     // ==========================================
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Appointment createAppointment(
+    public AppointmentDTO createAppointment(
             @RequestParam("patientId") Long patientId,
             @RequestParam("date") String date,
             @RequestParam(value = "time", required = false) String time,
@@ -80,9 +90,6 @@ public class AppointmentController {
             @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
             @RequestParam(value = "files", required = false) List<MultipartFile> files
     ) {
-        System.out.println(">>> CREATING APPOINTMENT");
-        if(files != null) System.out.println(">>> Files Received: " + files.size());
-        
         Appointment app = new Appointment();
         app.setPatientId(patientId);
         app.setDate(LocalDate.parse(date));
@@ -97,7 +104,7 @@ public class AppointmentController {
             app.setPrescriptionUrl(fileName);
         }
 
-        // 2. Multiple X-Rays
+        // 2. Multiple X-Rays / Files
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
                 String fileName = fileStorageService.storeFile(file);
@@ -106,14 +113,17 @@ public class AppointmentController {
                 }
             }
         }
-        return appointmentRepo.save(app);
+        
+        Appointment savedApp = appointmentRepo.save(app);
+        // Return DTO so frontend gets the clean list of URLs immediately
+        return convertToDTO(savedApp);
     }
 
     // ==========================================
     // UPDATE (PUT)
     // ==========================================
     @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public Appointment updateAppointment(
+    public AppointmentDTO updateAppointment(
             @PathVariable Long id,
             @RequestParam(value = "date", required = false) String date,
             @RequestParam(value = "time", required = false) String time,
@@ -123,10 +133,8 @@ public class AppointmentController {
             @RequestParam(value = "prescriptionFile", required = false) MultipartFile prescriptionFile,
             @RequestParam(value = "files", required = false) List<MultipartFile> files
     ) {
-        System.out.println(">>> UPDATING APPOINTMENT ID: " + id);
-        if(files != null) System.out.println(">>> New Files Received: " + files.size());
-
-        Appointment app = appointmentRepo.findById(id).orElseThrow(() -> new RuntimeException("Not found"));
+        Appointment app = appointmentRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Not found"));
         
         if (date != null) app.setDate(LocalDate.parse(date));
         if (time != null && !time.isEmpty()) app.setTime(LocalTime.parse(time));
@@ -149,7 +157,10 @@ public class AppointmentController {
                 }
             }
         }
-        return appointmentRepo.save(app);
+        
+        Appointment savedApp = appointmentRepo.save(app);
+        // Return DTO so frontend gets the clean list of URLs immediately
+        return convertToDTO(savedApp);
     }
 
     @DeleteMapping("/{id}")
@@ -157,8 +168,6 @@ public class AppointmentController {
         appointmentRepo.deleteById(id);
     }
 }
-
-
 
 
 
